@@ -38,7 +38,7 @@ def load_my_datasets(splits):
             split, number = components[0], int(components[1])
 
         # Load Json
-        with open(str(Path(args.project_prefix) / 'DATA/data/aerialvln/{}.json'.format(split)), 'r', encoding='utf-8') as f:
+        with open(str(Path(args.project_prefix) / 'DATA/data/test/{}.json'.format(split)), 'r', encoding='utf-8') as f:
             new_data = json.load(f)
             # vocab = new_data['instruction_vocab']
             new_data = new_data['episodes']
