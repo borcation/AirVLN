@@ -445,7 +445,7 @@ def initialize_env(split='train'):
     tok = initialize_tokenizer()
 
     train_env = AirVLNENV(batch_size=args.batchSize, split=split, tokenizer=tok)
-
+    #获得了什么都有的train.env
     return train_env
 
 
@@ -459,7 +459,7 @@ def initialize_trainer():
         "instruction": spaces.Discrete(0),
         "progress": spaces.Box(low=0, high=1, shape=(1,), dtype=np.float32),
         "teacher_action": spaces.Box(low=0, high=100, shape=(1,)),
-    })
+    })  #好像和self.observation_space的结构很像
     action_space = spaces.Discrete(int(len(AirsimActions)))
 
     trainer = VLNCETrainer(
@@ -510,10 +510,10 @@ def collect_data(data_it=0):
 
     #
     with torch.no_grad():
-        end_iter = len(train_env.data)
+        end_iter = len(train_env.data) #——> 100条数据
         pbar = None
         pbar_pre_index = 0
-        while train_env.index_data < end_iter:
+        while train_env.index_data < end_iter: #可能会出错，最后一组好像是没搞
             if pbar_pre_index + train_env.batch_size >= end_iter:
                 break
 

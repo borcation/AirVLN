@@ -26,33 +26,33 @@ from utils.env_vector import VectorEnvUtil
 from utils.shorest_path_sensor import EuclideanDistance3
 
 
-def load_my_datasets(splits):
-    import random
-    data = []
-    vocab = {}
-    old_state = random.getstate()
-    for split in splits:
-        components = split.split("@")
-        number = -1
-        if len(components) > 1:
-            split, number = components[0], int(components[1])
+def load_my_datasets(splits): #splits = ['train']
+    import random  # 导入随机数模块
+    data = []  # 初始化数据列表
+    vocab = {}  # 初始化词表字典（当前未使用）
+    old_state = random.getstate()  # 保存当前随机数生成器的状态
+    for split in splits:  # 遍历所有数据集分割（如train、val、test）
+        components = split.split("@")  # 支持格式如 'train@100'，分割出数量 #components = ['train']
+        number = -1  # 默认不限制数量
+        if len(components) > 1:  # 如果指定了数量
+            split, number = components[0], int(components[1])  # 分割名和数量 #当前不分割
 
         # Load Json
-        with open(str(Path(args.project_prefix) / 'DATA/data/test/{}.json'.format(split)), 'r', encoding='utf-8') as f:
-            new_data = json.load(f)
-            # vocab = new_data['instruction_vocab']
-            new_data = new_data['episodes']
+        with open(str(Path(args.project_prefix) / 'DATA/data/test/{}.json'.format(split)), 'r', encoding='utf-8') as f:  # 打开对应split的json文件
+            new_data = json.load(f)  # 加载json内容，/data/test/train.json
+            # vocab = new_data['instruction_vocab']  # （注释掉）理论上可以加载词表
+            new_data = new_data['episodes']  # 只取episodes部分
 
         # Partition
-        if number > 0:
-            random.seed(1)              # Make the data deterministic, additive
-            random.shuffle(new_data)
-            new_data = new_data[:number]
+        if number > 0:  # 如果指定了数量
+            random.seed(1)  # 固定随机种子，保证每次采样一致
+            random.shuffle(new_data)  # 随机打乱数据
+            new_data = new_data[:number]  # 只取前number条
 
         # Join
-        data += new_data
-    random.setstate(old_state)      # Recover the state of the random generator
-    return data, vocab
+        data += new_data  # 合并到总数据列表
+    random.setstate(old_state)  # 恢复原来的随机数生成器状态
+    return data, vocab  # 返回数据和词表（当前词
 
 
 class AirVLNENV:
@@ -68,6 +68,8 @@ class AirVLNENV:
         self.dataset_group_by_scene = dataset_group_by_scene
 
         load_data, vocab = load_my_datasets([split])
+        #load_data在test里面正好是100条，以[{episode_id: xxx, trajectory_id，scene_id: xxx, ...}, ...]的形式存储
+        #奇怪，从train.json中加载数据的vocab是空的
         self.ori_raw_data = load_data.copy()
         self.vocab = vocab.copy()
         # args.vocab_size = self.vocab['num_vocab']
@@ -75,20 +77,19 @@ class AirVLNENV:
 
         self.index_data = 0
         self.data = []
-        pbar = tqdm.tqdm(total=len(self.ori_raw_data))
+        pbar = tqdm.tqdm(total=len(self.ori_raw_data)) #进度条
         for i_item, item in enumerate(self.ori_raw_data):
             if args.collect_type in ['TF']:
                 if len(list(args.TF_mode_load_scene)) > 0 and str(item['scene_id']) not in list(args.TF_mode_load_scene):
                     pbar.update()
                     continue
-
             if args.collect_type in ['dagger', 'SF']:
                 if len(list(args.dagger_mode_load_scene)) > 0 and str(item['scene_id']) not in list(args.dagger_mode_load_scene):
                     pbar.update()
                     continue
 
-            new_item = dict(item).copy()
-            if args.tokenizer_use_bert:
+            new_item = dict(item).copy() #load_data->ori_new_data中的每一条数据是一个字典然后一个一个放进来
+            if args.tokenizer_use_bert: #是否使用 BERT 分词器，奇怪为什么就一处，而且是false
                 text = item['instruction']['instruction_text']
                 instruction_tokens = tokenizer(
                     text,
@@ -98,6 +99,7 @@ class AirVLNENV:
                     return_tensors="pt"
                 )['input_ids'][0]
             else:
+                #在这之后instruction_tokens 就是一个 list,就是对自然语言编码的过程
                 instruction_tokens = tokenizer.encode_sentence(item['instruction']['instruction_text'])
             new_item['instruction']['instruction_tokens'] = instruction_tokens
             self.data.append(new_item)
@@ -106,25 +108,37 @@ class AirVLNENV:
 
         self.trajectory_id_2_instruction_tokens = {}
         self.trajectory_id_2_episode_ids = {}
-        for i_item, item in enumerate(self.data):
-            if item['trajectory_id'] not in self.trajectory_id_2_instruction_tokens.keys():
-                self.trajectory_id_2_instruction_tokens[item['trajectory_id']] = []
+        #建立 trajectory_id 到 instruction_tokens 的映射
+        #以及 trajectory_id 到 episode_id 的映射
+        #这两个字典的作用是为了在后续的处理过程中快速查找
+        #trajectory_id 是每个轨迹的唯一标识符，episode_id 是每个轨迹所属的剧集的唯一标识符
+        #instruction_tokens 是对自然语言指令的编码结果
+        #episode_id 是每个轨迹所属的剧集
+        #trajectory_id 是每个轨迹的唯一标识符（以上是copilot说的，我不负责）
+        #一个 episode_id 可以包含多个 trajectory_id（比如同一个任务下有多种走法）。
+        #trajectory_id 更细粒度，专注于具体的轨迹；episode_id 更宏观，代表一次任务或实验。
+        #简单理解：
+
+        #episode_id 是任务编号，trajectory_id 是路径编号。
+        for i_item, item in enumerate(self.data):  # 遍历所有数据，每个item是一条轨迹数据
+            if item['trajectory_id'] not in self.trajectory_id_2_instruction_tokens.keys():  # 如果该轨迹ID还没有在字典中
+                self.trajectory_id_2_instruction_tokens[item['trajectory_id']] = []  # 新建一个空列表用于存放指令编码
                 self.trajectory_id_2_instruction_tokens[item['trajectory_id']].append(
-                    item['instruction']['instruction_tokens']
+                    item['instruction']['instruction_tokens']  # 把当前轨迹的指令编码加入列表
                 )
             else:
                 self.trajectory_id_2_instruction_tokens[item['trajectory_id']].append(
-                    item['instruction']['instruction_tokens']
+                    item['instruction']['instruction_tokens']  # 如果已存在，直接追加指令编码
                 )
 
-            if item['trajectory_id'] not in self.trajectory_id_2_episode_ids.keys():
-                self.trajectory_id_2_episode_ids[item['trajectory_id']] = []
+            if item['trajectory_id'] not in self.trajectory_id_2_episode_ids.keys():  # 如果该轨迹ID还没有在episode字典中
+                self.trajectory_id_2_episode_ids[item['trajectory_id']] = []  # 新建一个空列表用于存放episode_id
                 self.trajectory_id_2_episode_ids[item['trajectory_id']].append(
-                    item['episode_id']
+                    item['episode_id']  # 把当前轨迹的episode_id加入列表
                 )
             else:
                 self.trajectory_id_2_episode_ids[item['trajectory_id']].append(
-                    item['episode_id']
+                    item['episode_id']  # 如果已存在，直接追加episode_id
                 )
 
         random.shuffle(self.data)
@@ -134,17 +148,17 @@ class AirVLNENV:
         if dataset_group_by_scene:
             self.data = self._group_scenes()
             logger.warning('dataset grouped by scene')
-
+        #下一行执行的时候，item的结构是{'episode_id': xxx, 'trajectory_id': xxx, 'scene_id': xxx, ...}』
         scenes = [item['scene_id'] for item in self.data]
         self.scenes = set(scenes)
-
+        #提取出来这100条数据的 scene_id，放在 self.scenes 中
         self.observation_space = spaces.Dict({
             "rgb": spaces.Box(low=0, high=255, shape=(args.Image_Height_RGB, args.Image_Width_RGB, 3), dtype=np.uint8),
             "depth": spaces.Box(low=0, high=1, shape=(args.Image_Height_DEPTH, args.Image_Width_DEPTH, 1), dtype=np.float32),
             "instruction": spaces.Discrete(0),
             "progress": spaces.Box(low=0, high=1, shape=(1,), dtype=np.float32),
             "teacher_action": spaces.Box(low=0, high=100, shape=(1,)),
-        })
+        }) #self.observation_space 是一个字典，包含了 RGB 图像、深度图像、指令、进度和教师动作等信息的空间定义，只是定义了空间的形状和类型，并没有实际的数据。
         self.action_space = spaces.Discrete(int(len(AirsimActions)))
 
         self.sim_states: Optional[List[SimState], List[None]] = [None for _ in range(batch_size)]
@@ -158,7 +172,7 @@ class AirVLNENV:
                 self.lmdb_features_dir = str(Path(args.project_prefix) / 'DATA' / 'img_features' / str(args.run_type) / str(args.name) / str(split))
                 self.lmdb_rgb_dir = str(Path(args.project_prefix) / 'DATA' / 'img_features' / str(args.run_type) / str(args.name) / (str(split)+'_rgb'))
                 self.lmdb_depth_dir = str(Path(args.project_prefix) / 'DATA' / 'img_features' / str(args.run_type) / str(args.name) / (str(split)+'_depth'))
-
+                #self.lmdb_features_dir = '/home/vergil/AirVLN_ws/DATA/img_features/collect/AirVLN-seq2seq/train',
                 if not os.path.exists(str(self.lmdb_features_dir)):
                     os.makedirs(str(self.lmdb_features_dir), exist_ok=True)
                 if not os.path.exists(str(self.lmdb_rgb_dir)):
@@ -176,7 +190,7 @@ class AirVLNENV:
                     self.lmdb_features_txn = self.lmdb_features_env.begin(write=True)
                     self.threading_lock_lmdb_features_txn = threading.Lock()
                     logger.info('init lmdb of {}, {}, lmdb_start_id: {}'.format(split, 'features', self.lmdb_features_start_id))
-
+                    #对数据库创建打开的初始化
                     self.lmdb_collected_keys = set()
                     with tqdm.tqdm(
                         total=int(self.lmdb_features_start_id), dynamic_ncols=True

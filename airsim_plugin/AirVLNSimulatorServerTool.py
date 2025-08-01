@@ -499,18 +499,20 @@ def serve_background(server, daemon=False):
     return t
 
 
-def serve(daemon=False):
+def serve(daemon=False):  # 启动RPC服务的函数
     try:
-        server = msgpackrpc.Server(EventHandler())
-        addr = msgpackrpc.Address(HOST, PORT)
-        server.listen(addr)
+        server = msgpackrpc.Server(EventHandler())  # 创建msgpackrpc的Server对象，并注册事件处理器（EventHandler类）
+        addr = msgpackrpc.Address(HOST, PORT)  # 构造监听的地址和端口
+        server.listen(addr)  # 让Server开始监听指定地址
 
-        thread = serve_background(server, daemon)
+        thread = serve_background(server, daemon)  # 在后台线程启动Server
 
-        return addr, server, thread
+        return addr, server, thread  # 返回监听地址、Server对象和线程对象
     except Exception as err:
-        print(err)
+        print(err)  # 如果出错，打印异常信息
         pass
+
+# 其中 msgpackrpc.Server(EventHandler()) 是 msgpackrpc 库的类构造方法，不是你自己实现的，是第三方库函数。
 
 
 if __name__ == '__main__':
@@ -528,23 +530,24 @@ if __name__ == '__main__':
         help='server port'
     )
     args = parser.parse_args()
-
+    #命令解释器，用来解析命令
+    #gpu为collect.sh给予的，--port是default
 
     HOST = '127.0.0.1'
     PORT = int(args.port)
 
-    CWD_DIR = Path(str(os.getcwd())).resolve()
-    PROJECT_ROOT_DIR = CWD_DIR.parent
+    CWD_DIR = Path(str(os.getcwd())).resolve() #AirVLN
+    PROJECT_ROOT_DIR = CWD_DIR.parent #AIRVLN_ws
     SEARCH_ENVs_PATH = PROJECT_ROOT_DIR / 'ENVs'
     assert os.path.exists(str(SEARCH_ENVs_PATH)), 'error'
 
-    gpu_list = []
+    gpu_list = [] #可以多个gpu
     gpus = str(args.gpus).split(',')
     for gpu in gpus:
         gpu_list.append(int(gpu.strip()))
     GPU_IDS = gpu_list.copy()
-
+    #GPUIDS 存入最终版的gpu目录
 
     addr, server, thread = serve()
-    print(f"start listening \t{addr._host}:{addr._port}")
+    print(f"start listening \t{addr._host}:{addr._port}")#证明成功了？
 
