@@ -16,7 +16,7 @@ echo $PWD
 
 export CUDA_VISIBLE_DEVICES=0
 
-nohup python -u ./airsim_plugin/AirVLNSimulatorServerTool.py --gpus 1 &
+nohup python -u ./airsim_plugin/AirVLNSimulatorServerTool.py --gpus 1,2,3,4 &
 
 sleep 5
 
@@ -25,6 +25,6 @@ python -u ./src/vlnce_src/train.py \
 --policy_type seq2seq \
 --collect_type TF \
 --name AirVLN-seq2seq \
---batchSize 1
+--batchSize 2
 
 

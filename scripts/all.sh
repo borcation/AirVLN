@@ -24,7 +24,9 @@ run_and_log() {
     echo -e "$result" >> $log_file
 }
 
-run_and_log AirVLN/scripts/collect_bs1.sh "collect_bs1"
+run_and_log AirVLN/scripts/collect_gpus.sh "collect_gpus"
+run_and_log AirVLN/scripts/collect_bs4_gpus.sh "collect_bs4_gpus"
+run_and_log AirVLN/scripts/collect_bs2_gpus.sh "collect_bs2_gpus"
 run_and_log AirVLN/scripts/collect_bs4.sh "collect_bs4"
 run_and_log AirVLN/scripts/collect_bs2.sh "collect_bs2"
 run_and_log AirVLN/scripts/collect.sh    "collect"
