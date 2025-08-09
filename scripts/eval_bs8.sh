@@ -17,7 +17,7 @@ python -u ./src/vlnce_src/train.py \
 --policy_type seq2seq \
 --collect_type TF \
 --name AirVLN-seq2seq \
---batchSize 1 \
+--batchSize 8 \
 --EVAL_CKPT_PATH_DIR ../DATA/output/AirVLN-seq2seq/train/checkpoint \
 --EVAL_DATASET train \
 --EVAL_NUM -1

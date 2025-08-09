@@ -223,12 +223,12 @@ class AirVLNSimulatorClientTool:
                             if args.run_type not in ['eval']:
                                 assert not (img1d.flatten()[0] == img1d).all(), 'Failed to retrieve RGB image'
                             img_rgb = img1d.reshape(response_rgb.height, response_rgb.width, 3)
-                            img_idx = int(time.time() * 1000)  # 用时间戳作为文件名，防止重复
-                            if get_rgb and img_rgb is not None:
-                                rgb_path = os.path.join(save_dir, f'{img_idx}_rgb.png')  # 构造RGB图片路径
-                                cv2.imwrite(rgb_path, img_rgb)  # 保存RGB图片
-                            else:
-                                print("not save")
+                            #img_idx = int(time.time() * 1000)  # 用时间戳作为文件名，防止重复
+                            #if get_rgb and img_rgb is not None:
+                            #    rgb_path = os.path.join(save_dir, f'{img_idx}_rgb.png')  # 构造RGB图片路径
+                            #    cv2.imwrite(rgb_path, img_rgb)  # 保存RGB图片
+                            #else:
+                            #    print("not save")
                             img_rgb = np.array(img_rgb)
 
                         if get_depth:
@@ -245,12 +245,12 @@ class AirVLNSimulatorClientTool:
                             
                             obs_depth_img = img1d / 255
                             #img_idx = int(time.time() * 1000)  # 用时间戳作为文件名，防止重复
-                            if get_depth and obs_depth_img is not None:
-                                depth_img_to_save = (obs_depth_img.squeeze() * 255).astype(np.uint8)  # 归一化并转为uint8
-                                depth_path = os.path.join(save_dir, f'{img_idx}_depth.png')  # 构造深度图片路径
-                                cv2.imwrite(depth_path, depth_img_to_save)  # 保存深度图片
-                            else:
-                                print("not save")
+                            #if get_depth and obs_depth_img is not None:
+                            #    depth_img_to_save = (obs_depth_img.squeeze() * 255).astype(np.uint8)  # 归一化并转为uint8
+                            #    depth_path = os.path.join(save_dir, f'{img_idx}_depth.png')  # 构造深度图片路径
+                            #    cv2.imwrite(depth_path, depth_img_to_save)  # 保存深度图片
+                            #else:
+                            #    print("not save")
                             img_depth = np.array(obs_depth_img, dtype=np.float32)
 
                         break
@@ -260,7 +260,7 @@ class AirVLNSimulatorClientTool:
                         logger.error('time_sleep_cnt: {}'.format(time_sleep_cnt))
                         time.sleep(1)
 
-                    if time_sleep_cnt > 20:
+                    if time_sleep_cnt > 5:
                         raise Exception('Failed to retrieve image')
 
             else:
@@ -296,12 +296,12 @@ class AirVLNSimulatorClientTool:
                     
                             img1d = np.frombuffer(response_rgb.image_data_uint8, dtype=np.uint8)  # 将原始字节数据转为一维数组
                             img_rgb = img1d.reshape(response_rgb.height, response_rgb.width, 3)  # 重塑为三维数组（高、宽、通道）
-                            img_idx = int(time.time() * 1000)  # 用时间戳作为文件名，防止重复
-                            if get_rgb and img_rgb is not None:
-                                rgb_path = os.path.join(save_dir, f'{img_idx}_rgb.png')  # 构造RGB图片路径
-                                cv2.imwrite(rgb_path, img_rgb)  # 保存RGB图片
-                            else:
-                                print("not save")
+                            #img_idx = int(time.time() * 1000)  # 用时间戳作为文件名，防止重复
+                            #if get_rgb and img_rgb is not None:
+                            #    rgb_path = os.path.join(save_dir, f'{img_idx}_rgb.png')  # 构造RGB图片路径
+                            #    cv2.imwrite(rgb_path, img_rgb)  # 保存RGB图片
+                            #else:
+                            #    print("not save")
                             img_rgb = np.array(img_rgb)  # 转为numpy数组
                         #print("***********285*************")    
                         if get_depth:  # 如果需要处理深度图像
@@ -312,12 +312,12 @@ class AirVLNSimulatorClientTool:
                                 assert not (depth_img_in_meters.flatten()[0] == depth_img_in_meters).all(), 'Failed to retrieve DEPTH image'  # 检查数据是否异常
                             depth_img_in_meters = depth_img_in_meters.reshape(response_depth.height, response_depth.width, 1)  # 重塑为三维数组（高、宽、单通道）
                             #img_idx = int(time.time() * 1000)  # 用时间戳作为文件名，防止重复
-                            if get_depth and depth_img_in_meters is not None:
-                                depth_img_to_save = (depth_img_in_meters.squeeze() * 255).astype(np.uint8)  # 归一化并转为uint8
-                                depth_path = os.path.join(save_dir, f'{img_idx}_depth.png')  # 构造深度图片路径
-                                cv2.imwrite(depth_path, depth_img_to_save)  # 保存深度图片
-                            else:
-                                print("not save")
+                            #if get_depth and depth_img_in_meters is not None:
+                            #    depth_img_to_save = (depth_img_in_meters.squeeze() * 255).astype(np.uint8)  # 归一化并转为uint8
+                            #    depth_path = os.path.join(save_dir, f'{img_idx}_depth.png')  # 构造深度图片路径
+                            #    cv2.imwrite(depth_path, depth_img_to_save)  # 保存深度图片
+                            #else:
+                            #    print("not save")
                             obs_depth_img = np.clip(depth_img_in_meters, 0, 100)  # 将深度值限制在0到100之间
                             obs_depth_img = obs_depth_img / 100  # 归一化到0~1之间
 
@@ -330,7 +330,7 @@ class AirVLNSimulatorClientTool:
                         logger.error('time_sleep_cnt: {}'.format(time_sleep_cnt))
                         time.sleep(1)
 
-                    if time_sleep_cnt > 20:
+                    if time_sleep_cnt > 5:
                         raise Exception('Failed to retrieve image')
 
             # Tip: If you are using AirVLN code for the first time, please confirm that the
