@@ -291,44 +291,50 @@ class EventHandler(object):
         return True
 
     def _open_scenes(self, ip: str , scen_ids: list):
+        # 打印开始关闭场景的时间和提示
         print(
             "{}\tSTART closing scenes ".format(
                 str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())),
             )
         )
+        # 杀死之前用过的端口对应的进程
         KillPorts(self.scene_used_ports)
+        # 清空已用端口列表
         self.scene_used_ports = []
-        # KillAirVLN()
+        # KillAirVLN()  # 注释掉的代码，原本用于杀死所有AirVLN进程
+        # 打印结束关闭场景的时间和提示
         print(
             "{}\tEND closing scenes ".format(
                 str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())),
             )
         )
 
-
-        # Occupied airsim port 1
+        # 1. 分配可用的airsim端口
         ports = []
         index = 0
+        # 遍历scene_ports，找到未被占用的端口，数量与scen_ids一致
         while len(ports) < len(scen_ids):
             pid = FromPortGetPid(self.scene_ports[index])
             if pid is None or not isinstance(pid, int):
                 ports.append(self.scene_ports[index])
             index += 1
 
+        # 再次确保这些端口没有被占用，杀死相关进程
         KillPorts(ports)
 
-
-        # Occupied GPU 2
+        # 2. 分配GPU
+        # 按照场景数量分配GPU编号
         gpus = [self.scene_gpus[index] for index in range(len(scen_ids))]
 
 
-        # search scene path 3
+        # 3. 查找每个场景的可执行文件路径
         choose_env_exe_paths = []
         for scen_id in scen_ids:
             if str(scen_id).lower() == 'none':
                 choose_env_exe_paths.append(None)
                 continue
 
+            # 递归查找ENVs目录下对应场景的AirVLN.sh脚本
             res = glob.glob((str(SEARCH_ENVs_PATH) + '/**/' + 'env_' + str(scen_id) + '/LinuxNoEditor/AirVLN.sh'), recursive=True)
             if len(res) > 0:
                 choose_env_exe_paths.append(res[0])
@@ -337,23 +343,27 @@ class EventHandler(object):
                 raise KeyError
 
 
+        # 4. 启动每个场景
         p_s = []
         for index in range(len(scen_ids)):
-            # airsim settings 4
+            # 生成airsim settings配置
             airsim_settings = create_drones()
             airsim_settings['ApiServerPort'] = int(ports[index])
             airsim_settings_write_content = json.dumps(airsim_settings)
+            # 创建settings目录
             if not os.path.exists(str(CWD_DIR / 'airsim_plugin/settings' / str(index+1))):
                 os.makedirs(str(CWD_DIR / 'airsim_plugin/settings' / str(index+1)), exist_ok=True)
+            # 写入settings.json
             with open(str(CWD_DIR / 'airsim_plugin/settings' / str(index+1) / 'settings.json'), 'w', encoding='utf-8') as dump_f:
                 dump_f.write(airsim_settings_write_content)
 
 
-            # open scene 5
+            # 启动场景
             if choose_env_exe_paths[index] is None:
                 p_s.append(None)
                 continue
             else:
+                # 构造启动命令，指定GPU和settings
                 subprocess_execute = "bash {} -RenderOffscreen -NoSound -NoVSync -GraphicsAdapter={} --settings {} ".format(
                     choose_env_exe_paths[index],
                     gpus[index],
@@ -361,6 +371,7 @@ class EventHandler(object):
                 )
 
                 try:
+                    # 启动子进程运行场景
                     p = subprocess.Popen(
                         subprocess_execute,
                         stdin=None, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -368,6 +379,7 @@ class EventHandler(object):
                     )
                     p_s.append(p)
                 except Exception as e:
+                    # 启动失败，打印错误并返回
                     print(
                         "{}\t{}".format(
                             str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())),
@@ -377,9 +389,10 @@ class EventHandler(object):
                     return False, None
                 except:
                     return False, None
+        # 等待3秒，给场景启动留时间
         time.sleep(3)
 
-        # check
+        # 5. 检查场景是否启动成功（通过线程并发检查）
         threads = []
 
         def _check_scene(index, p):
@@ -486,18 +499,20 @@ def serve_background(server, daemon=False):
     return t
 
 
-def serve(daemon=False):
+def serve(daemon=False):  # 启动RPC服务的函数
     try:
-        server = msgpackrpc.Server(EventHandler())
-        addr = msgpackrpc.Address(HOST, PORT)
-        server.listen(addr)
+        server = msgpackrpc.Server(EventHandler())  # 创建msgpackrpc的Server对象，并注册事件处理器（EventHandler类）
+        addr = msgpackrpc.Address(HOST, PORT)  # 构造监听的地址和端口
+        server.listen(addr)  # 让Server开始监听指定地址
 
-        thread = serve_background(server, daemon)
+        thread = serve_background(server, daemon)  # 在后台线程启动Server
 
-        return addr, server, thread
+        return addr, server, thread  # 返回监听地址、Server对象和线程对象
     except Exception as err:
-        print(err)
+        print(err)  # 如果出错，打印异常信息
         pass
+
+# 其中 msgpackrpc.Server(EventHandler()) 是 msgpackrpc 库的类构造方法，不是你自己实现的，是第三方库函数。
 
 
 if __name__ == '__main__':
@@ -515,23 +530,24 @@ if __name__ == '__main__':
         help='server port'
     )
     args = parser.parse_args()
-
+    #命令解释器，用来解析命令
+    #gpu为collect.sh给予的，--port是default
 
     HOST = '127.0.0.1'
     PORT = int(args.port)
 
-    CWD_DIR = Path(str(os.getcwd())).resolve()
-    PROJECT_ROOT_DIR = CWD_DIR.parent
+    CWD_DIR = Path(str(os.getcwd())).resolve() #AirVLN
+    PROJECT_ROOT_DIR = CWD_DIR.parent #AIRVLN_ws
     SEARCH_ENVs_PATH = PROJECT_ROOT_DIR / 'ENVs'
     assert os.path.exists(str(SEARCH_ENVs_PATH)), 'error'
 
-    gpu_list = []
+    gpu_list = [] #可以多个gpu
     gpus = str(args.gpus).split(',')
     for gpu in gpus:
         gpu_list.append(int(gpu.strip()))
     GPU_IDS = gpu_list.copy()
-
+    #GPUIDS 存入最终版的gpu目录
 
     addr, server, thread = serve()
-    print(f"start listening \t{addr._host}:{addr._port}")
+    print(f"start listening \t{addr._host}:{addr._port}")#证明成功了？
 

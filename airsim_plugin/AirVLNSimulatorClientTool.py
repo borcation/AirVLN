@@ -9,6 +9,9 @@ import cv2
 import os
 import matplotlib.pyplot as plt
 
+save_dir = '/home/vergil/AirVLN_ws/DATA/img_features/collect/AirVLN-seq2seq/pic'  # 保存路径
+os.makedirs(save_dir, exist_ok=True)  # 如果目录不存在则创建
+
 if __name__ == '__main__':
     import sys
     cur_path=os.path.abspath(os.path.dirname(__file__))
@@ -220,6 +223,12 @@ class AirVLNSimulatorClientTool:
                             if args.run_type not in ['eval']:
                                 assert not (img1d.flatten()[0] == img1d).all(), 'Failed to retrieve RGB image'
                             img_rgb = img1d.reshape(response_rgb.height, response_rgb.width, 3)
+                            #img_idx = int(time.time() * 1000)  # 用时间戳作为文件名，防止重复
+                            #if get_rgb and img_rgb is not None:
+                            #    rgb_path = os.path.join(save_dir, f'{img_idx}_rgb.png')  # 构造RGB图片路径
+                            #    cv2.imwrite(rgb_path, img_rgb)  # 保存RGB图片
+                            #else:
+                            #    print("not save")
                             img_rgb = np.array(img_rgb)
 
                         if get_depth:
@@ -233,9 +242,15 @@ class AirVLNSimulatorClientTool:
 
                             img1d = img3d[:, :, 1]
                             img1d = img1d.reshape(response_depth.height, response_depth.width, 1)
-
+                            
                             obs_depth_img = img1d / 255
-
+                            #img_idx = int(time.time() * 1000)  # 用时间戳作为文件名，防止重复
+                            #if get_depth and obs_depth_img is not None:
+                            #    depth_img_to_save = (obs_depth_img.squeeze() * 255).astype(np.uint8)  # 归一化并转为uint8
+                            #    depth_path = os.path.join(save_dir, f'{img_idx}_depth.png')  # 构造深度图片路径
+                            #    cv2.imwrite(depth_path, depth_img_to_save)  # 保存深度图片
+                            #else:
+                            #    print("not save")
                             img_depth = np.array(obs_depth_img, dtype=np.float32)
 
                         break
@@ -245,63 +260,77 @@ class AirVLNSimulatorClientTool:
                         logger.error('time_sleep_cnt: {}'.format(time_sleep_cnt))
                         time.sleep(1)
 
-                    if time_sleep_cnt > 20:
+                    if time_sleep_cnt > 5:
                         raise Exception('Failed to retrieve image')
 
             else:
                 time_sleep_cnt = 0
                 while True:
-                    try:
-                        ImageRequest = []
-                        if get_rgb:
+                    try:  # 尝试执行以下代码块
+                        #print("***********255*************")
+                        ImageRequest = []  # 初始化图像请求列表
+                        if get_rgb:  # 如果需要获取RGB图像
                             ImageRequest.append(
-                                airsim.ImageRequest("front_0", airsim.ImageType.Scene, pixels_as_float=False, compress=False)
+                                airsim.ImageRequest("front_0", airsim.ImageType.Scene, pixels_as_float=False, compress=False)  # 添加RGB图像请求
                             )
-                        if get_depth:
+                        #print("***********261*************")
+                        if get_depth:  # 如果需要获取深度图像
                             ImageRequest.append(
-                                airsim.ImageRequest("front_0", airsim.ImageType.DepthPerspective, pixels_as_float=True, compress=False)
+                                airsim.ImageRequest("front_0", airsim.ImageType.DepthPerspective, pixels_as_float=True, compress=False)  # 添加深度图像请求
                             )
-
-                        responses = airsim_client.simGetImages(ImageRequest, vehicle_name='Drone_1')
-
-                        if get_rgb and get_depth:
-                            response_rgb = responses[0]
-                            response_depth = responses[1]
-                        elif get_rgb and not get_depth:
-                            response_rgb = responses[0]
-                        elif not get_rgb and get_depth:
-                            response_depth = responses[0]
-                        else:
+                        #print("***********266*************")
+                        responses = airsim_client.simGetImages(ImageRequest, vehicle_name='Drone_1')  # 发送图像请求，获取响应
+                        #print("***********268*************")
+                        if get_rgb and get_depth:  # 如果同时请求了RGB和深度图像
+                            response_rgb = responses[0]  # 第一个响应为RGB图像
+                            response_depth = responses[1]  # 第二个响应为深度图像
+                        elif get_rgb and not get_depth:  # 只请求RGB图像
+                            response_rgb = responses[0]  # 响应为RGB图像
+                        elif not get_rgb and get_depth:  # 只请求深度图像
+                            response_depth = responses[0]  # 响应为深度图像
+                        else:  # 如果都不请求，跳出循环
                             break
+                        #print("***********278*************")
+                        if get_rgb:  # 如果需要处理RGB图像
+                            assert response_rgb.height == args.Image_Height_RGB and response_rgb.width == args.Image_Width_RGB, 'Failed to retrieve RGB image'  # 检查图像尺寸
+                    
+                            img1d = np.frombuffer(response_rgb.image_data_uint8, dtype=np.uint8)  # 将原始字节数据转为一维数组
+                            img_rgb = img1d.reshape(response_rgb.height, response_rgb.width, 3)  # 重塑为三维数组（高、宽、通道）
+                            #img_idx = int(time.time() * 1000)  # 用时间戳作为文件名，防止重复
+                            #if get_rgb and img_rgb is not None:
+                            #    rgb_path = os.path.join(save_dir, f'{img_idx}_rgb.png')  # 构造RGB图片路径
+                            #    cv2.imwrite(rgb_path, img_rgb)  # 保存RGB图片
+                            #else:
+                            #    print("not save")
+                            img_rgb = np.array(img_rgb)  # 转为numpy数组
+                        #print("***********285*************")    
+                        if get_depth:  # 如果需要处理深度图像
+                            assert response_depth.height == args.Image_Height_DEPTH and response_depth.width == args.Image_Width_DEPTH, 'Failed to retrieve DEPTH image'  # 检查图像尺寸
+                    
+                            depth_img_in_meters = airsim.list_to_2d_float_array(response_depth.image_data_float, response_depth.width, response_depth.height)  # 将原始float数据转为二维数组
+                            if depth_img_in_meters.min() < 1e4:  # 检查最小值是否小于1e4
+                                assert not (depth_img_in_meters.flatten()[0] == depth_img_in_meters).all(), 'Failed to retrieve DEPTH image'  # 检查数据是否异常
+                            depth_img_in_meters = depth_img_in_meters.reshape(response_depth.height, response_depth.width, 1)  # 重塑为三维数组（高、宽、单通道）
+                            #img_idx = int(time.time() * 1000)  # 用时间戳作为文件名，防止重复
+                            #if get_depth and depth_img_in_meters is not None:
+                            #    depth_img_to_save = (depth_img_in_meters.squeeze() * 255).astype(np.uint8)  # 归一化并转为uint8
+                            #    depth_path = os.path.join(save_dir, f'{img_idx}_depth.png')  # 构造深度图片路径
+                            #    cv2.imwrite(depth_path, depth_img_to_save)  # 保存深度图片
+                            #else:
+                            #    print("not save")
+                            obs_depth_img = np.clip(depth_img_in_meters, 0, 100)  # 将深度值限制在0到100之间
+                            obs_depth_img = obs_depth_img / 100  # 归一化到0~1之间
 
-                        if get_rgb:
-                            assert response_rgb.height == args.Image_Height_RGB and response_rgb.width == args.Image_Width_RGB, 'Failed to retrieve RGB image'
-
-                            img1d = np.frombuffer(response_rgb.image_data_uint8, dtype=np.uint8)
-                            img_rgb = img1d.reshape(response_rgb.height, response_rgb.width, 3)
-                            img_rgb = np.array(img_rgb)
-
-                        if get_depth:
-                            assert response_depth.height == args.Image_Height_DEPTH and response_depth.width == args.Image_Width_DEPTH, 'Failed to retrieve DEPTH image'
-
-                            depth_img_in_meters = airsim.list_to_2d_float_array(response_depth.image_data_float, response_depth.width, response_depth.height)
-                            if depth_img_in_meters.min() < 1e4:
-                                assert not (depth_img_in_meters.flatten()[0] == depth_img_in_meters).all(), 'Failed to retrieve DEPTH image'
-                            depth_img_in_meters = depth_img_in_meters.reshape(response_depth.height, response_depth.width, 1)
-
-                            obs_depth_img = np.clip(depth_img_in_meters, 0, 100)
-                            obs_depth_img = obs_depth_img / 100
-
-                            img_depth = np.array(obs_depth_img, dtype=np.float32)
-
-                        break
+                            img_depth = np.array(obs_depth_img, dtype=np.float32)  # 转为float32类型的numpy数组
+                    
+                        break  # 跳出
                     except:
                         time_sleep_cnt += 1
                         logger.error("Failed to retrieve image")
                         logger.error('time_sleep_cnt: {}'.format(time_sleep_cnt))
                         time.sleep(1)
 
-                    if time_sleep_cnt > 20:
+                    if time_sleep_cnt > 5:
                         raise Exception('Failed to retrieve image')
 
             # Tip: If you are using AirVLN code for the first time, please confirm that the

@@ -1006,7 +1006,7 @@ def train_vlnce():
         AuxLosses.deactivate()
 
 
-def eval_vlnce2():
+def eval_vlnce():
     logger.info(args)
 
     writer = TensorboardWriter(
@@ -1067,39 +1067,7 @@ def eval_vlnce2():
             logger.error(e)
     logger.info("END evaluate")
 
-def eval_vlnce():
-    logger.info(args)
 
-    writer = TensorboardWriter(
-        str(Path(args.project_prefix) / 'DATA/output/{}/eval/TensorBoard/{}'.format(args.name, args.make_dir_time)),
-        flush_secs=30,
-    )
-
-    tok = initialize_tokenizer()
-
-    # 查找第一个子文件夹下的ckpt.LAST.pth
-    ckpt_dir = args.EVAL_CKPT_PATH_DIR
-    subfolders = [f for f in os.listdir(ckpt_dir) if os.path.isdir(os.path.join(ckpt_dir, f))]
-    assert len(subfolders) > 0, f'No subfolders found in {ckpt_dir}'
-    first_subfolder = sorted(subfolders)[-1]
-    ckpt_last_path = os.path.join(ckpt_dir, first_subfolder, "ckpt.LAST.pth")
-    assert os.path.exists(ckpt_last_path), f'ckpt.LAST.pth not found in {ckpt_last_path}'
-    logger.info(f"=======current_ckpt: {ckpt_last_path}=======")
-    _eval_checkpoint(
-        checkpoint_path=ckpt_last_path,
-        writer=writer,
-        tok=tok,
-        checkpoint_index=0,
-    )
-    logger.info("END evaluate")
-
-    if writer is not None:
-        try:
-            writer.writer.close()
-            del writer
-        except Exception as e:
-            logger.error(e)
-    logger.info("END evaluate")
 def _eval_checkpoint(
     checkpoint_path: str,
     writer,

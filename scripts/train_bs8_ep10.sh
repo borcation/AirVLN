@@ -13,9 +13,9 @@ python -u ./src/vlnce_src/train.py \
 --policy_type seq2seq \
 --collect_type TF \
 --name AirVLN-seq2seq \
---batchSize 16 \
+--batchSize 8 \
 --dagger_it 1 \
---epochs 500 \
+--epochs 10 \
 --lr 0.00025 \
 --trainer_gpu_device 0
 
