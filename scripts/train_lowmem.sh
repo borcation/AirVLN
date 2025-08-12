@@ -25,9 +25,9 @@ python -u ./src/vlnce_src/train.py \
   --trainer_gpu_device 0 \
   --maxAction 500 \
   --amp \
-  --ablate_rgb
+  # --ablate_rgb
 
 # 说明：
-# 1) --amp 启用混合精度，显存占用明显降低。
-# 2) --maxAction 120 将序列长度上限裁剪到 120（原来为 500），显著降低时间维度开销。
+# 1) --amp 启用混合精度，显存占用明显降低，训练时间还能减少10%-30%。
+# 2) --maxAction 120 将RNN缓存序列长度上限裁剪到 120（默认最大为 500），降低部分时间维度开销。
 # 3) --ablate_rgb 关闭 RGB 编码器前向，以进一步降显存/算力。若希望保留 RGB，可去掉该标志再试。

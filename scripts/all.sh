@@ -37,6 +37,8 @@ run_and_log AirVLN/scripts/train_bs16_ep20.sh "train_bs16_ep20"
 run_and_log AirVLN/scripts/train_bs8_ep5.sh  "train_bs8_ep5"
 run_and_log AirVLN/scripts/train_bs8_ep10.sh "train_bs8_ep10"
 run_and_log AirVLN/scripts/train_bs8_ep20.sh "train_bs8_ep20"
-
+run_and_log AirVLN/scripts/train_bs4_ep5.sh  "train_bs4_ep5"
+run_and_log AirVLN/scripts/train_bs4_ep10.sh  "train_bs4_ep10"
+run_and_log AirVLN/scripts/train_bs4_ep50.sh  "train_bs4_ep50"
 
 run_and_log AirVLN/scripts/eval.sh     "eval"
