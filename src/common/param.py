@@ -25,6 +25,7 @@ class Param:
         self.parser.add_argument('--lr', type=float, default=0.00025, help="learning rate")
         self.parser.add_argument('--batchSize', type=int, default=8)
         self.parser.add_argument("--trainer_gpu_device", type=int, default=0, help='GPU')
+        self.parser.add_argument('--amp', action='store_true', help='enable PyTorch AMP mixed precision to reduce memory')
 
         self.parser.add_argument('--Image_Height_RGB', type=int, default=224)
         self.parser.add_argument('--Image_Width_RGB', type=int, default=224)

@@ -350,8 +350,8 @@ def collate_fn(batch):
 
     observations_batch = new_observations_batch
 
-    # max_traj_len = max(ele.size(0) for ele in prev_actions_batch)
-    max_traj_len = 500
+    # 使用实际序列长度，并用超参上限裁剪，避免无谓 padding 占显存
+    max_traj_len = min(max(ele.size(0) for ele in prev_actions_batch), int(args.maxAction))
     for bid in range(B):
         for sensor in observations_batch:
             observations_batch[sensor][bid] = _pad_helper(
@@ -377,10 +377,9 @@ def collate_fn(batch):
     prev_actions_batch = torch.stack(prev_actions_batch, dim=1)
     corrected_actions_batch = torch.stack(corrected_actions_batch, dim=1)
     weights_batch = torch.stack(weights_batch, dim=1)
-    not_done_masks = torch.ones_like(
-        corrected_actions_batch, dtype=torch.uint8
-    )
-    not_done_masks[0] = 0
+    # 使用 bool mask，兼容 PyTorch 新版并更省显存
+    not_done_masks = torch.ones_like(corrected_actions_batch, dtype=torch.bool)
+    not_done_masks[0] = False
 
     observations_batch = ObservationsDict(observations_batch)
 
@@ -432,8 +431,15 @@ def batch_obs(
 
 def initialize_tokenizer():
     if args.tokenizer_use_bert:
-        from transformers import BertTokenizer
-        tok = BertTokenizer.from_pretrained('bert-base-uncased')
+        try:
+            import importlib
+            transformers = importlib.import_module('transformers')
+            BertTokenizer = getattr(transformers, 'BertTokenizer')
+            tok = BertTokenizer.from_pretrained('bert-base-uncased')
+        except Exception as e:
+            logger.warning(f"Falling back to simple Tokenizer due to BERT load failure: {e}")
+            vocab = read_vocab(args.TRAIN_VOCAB)
+            tok = Tokenizer(vocab=vocab, encoding_length=args.maxInput)
     else:
         vocab = read_vocab(args.TRAIN_VOCAB)
         tok = Tokenizer(vocab=vocab, encoding_length=args.maxInput)
@@ -451,23 +457,36 @@ def initialize_env(split='train'):
 
 def initialize_trainer():
     from gym import spaces
+    # gym为一个强化学习库，提供了用于构建强化学习环境的工具，spaces类为不同数据类型提供支持
+    # Dict是字典，Box是n维实数空间，Discrete是离散空间
     from airsim_plugin.airsim_settings import AirsimActions
 
+    # 构建观测空间 observation_space，描述智能体每一步能观测到的数据结构
     observation_space = spaces.Dict({
+        # RGB 图像，shape 由参数指定
         "rgb": spaces.Box(low=0, high=255, shape=(args.Image_Height_RGB, args.Image_Width_RGB, 3), dtype=np.uint8),
+        # 深度图，shape 由参数指定
         "depth": spaces.Box(low=0, high=1, shape=(args.Image_Height_DEPTH, args.Image_Width_DEPTH, 1), dtype=np.float32),
+        # 指令，离散空间
         "instruction": spaces.Discrete(0),
+        # 进度信息
         "progress": spaces.Box(low=0, high=1, shape=(1,), dtype=np.float32),
+        # 教师动作
         "teacher_action": spaces.Box(low=0, high=100, shape=(1,)),
-    })  #好像和self.observation_space的结构很像
+    })  # 结构与 self.observation_space 很像
+
+    # 构建动作空间 action_space，动作数量等于 AirsimActions 的长度（不改的话就是8）
     action_space = spaces.Discrete(int(len(AirsimActions)))
 
+    # 初始化训练器 trainer，类型为 VLNCETrainer
+    # trainer 是训练智能体的“教练”，负责模型训练、参数更新、损失计算、模型保存等
     trainer = VLNCETrainer(
         load_from_ckpt=False,
         observation_space=observation_space,
         action_space=action_space,
     )
 
+    # trainer 封装了整个训练流程，是训练过程的核心控制器
     logger.info('initialize_trainer over')
     return trainer
 
@@ -856,12 +875,14 @@ def train_vlnce():
     logger.info(args)
 
     if get_rank() == 0:
+        # 主进程，创建 TensorBoard 日志, 供可视化查看训练过程
         writer = SummaryWriter(
             log_dir=str(Path(args.project_prefix) / 'DATA/output/{}/train/TensorBoard/{}'.format(args.name, args.make_dir_time)),
         )
     else:
         writer = None
 
+    # 初始化训练器
     trainer = initialize_trainer()
 
     for dagger_it in range(int(args.dagger_it)):
@@ -870,11 +891,11 @@ def train_vlnce():
         if torch.cuda.is_available():
             with torch.cuda.device(trainer.device):
                 torch.cuda.empty_cache()
-        gc.collect()
+        gc.collect() # 清理内存垃圾
 
         lmdb_features_dir = str(Path(args.project_prefix) / 'DATA/img_features/collect/{}/train'.format(args.name))
         assert os.path.exists(str(lmdb_features_dir))
-        if args.DistributedDataParallel:
+        if args.DistributedDataParallel: # 采用分布式数据并行
             dataset = DDPIWTrajectoryDataset(
                 lmdb_features_dir,
                 use_iw=True,
@@ -937,18 +958,10 @@ def train_vlnce():
 
                 loss, action_loss, aux_loss = trainer._update_agent(
                     observations_batch,
-                    prev_actions_batch.to(
-                        device=trainer.device, non_blocking=True
-                    ),
-                    not_done_masks.to(
-                        device=trainer.device, non_blocking=True
-                    ),
-                    corrected_actions_batch.to(
-                        device=trainer.device, non_blocking=True
-                    ),
-                    weights_batch.to(
-                        device=trainer.device, non_blocking=True
-                    ),
+                    prev_actions_batch.to(device=trainer.device, non_blocking=True),
+                    not_done_masks.to(device=trainer.device, non_blocking=True),
+                    corrected_actions_batch.to(device=trainer.device, non_blocking=True),
+                    weights_batch.to(device=trainer.device, non_blocking=True),
                 )
 
                 logger.warning(
