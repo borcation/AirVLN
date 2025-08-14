@@ -24,19 +24,6 @@ run_and_log() {
     echo -e "$result" >> $log_file
 }
 
-run_and_log AirVLN/scripts/collect_gpus.sh "collect_gpus"
-run_and_log AirVLN/scripts/collect_bs4_gpus.sh "collect_bs4_gpus"
-run_and_log AirVLN/scripts/collect_bs2_gpus.sh "collect_bs2_gpus"
-run_and_log AirVLN/scripts/collect_bs4.sh "collect_bs4"
-run_and_log AirVLN/scripts/collect_bs2.sh "collect_bs2"
-run_and_log AirVLN/scripts/collect.sh    "collect"
-
-run_and_log AirVLN/scripts/train_bs16_ep5.sh  "train_bs16_ep5"
-run_and_log AirVLN/scripts/train_bs16_ep10.sh "train_bs16_ep10"
-run_and_log AirVLN/scripts/train_bs16_ep20.sh "train_bs16_ep20"
-run_and_log AirVLN/scripts/train_bs8_ep5.sh  "train_bs8_ep5"
-run_and_log AirVLN/scripts/train_bs8_ep10.sh "train_bs8_ep10"
-run_and_log AirVLN/scripts/train_bs8_ep20.sh "train_bs8_ep20"
-
-
-run_and_log AirVLN/scripts/eval.sh     "eval"
+run_and_log AirVLN/scripts/collect.sh        "collect"
+run_and_log AirVLN/scripts/train_bs8_ep5.sh    "train_bs8_ep5"
+run_and_log AirVLN/scripts/eval.sh    "eval"

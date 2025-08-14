@@ -278,17 +278,17 @@ class EventHandler(object):
             scene_ports.append(
                 int(args.port) + (i+1)
             )
-        self.scene_ports = scene_ports
+        self.scene_ports = scene_ports  # 预生成1000个可用端口号（基于启动参数port）
 
         scene_gpus = []
         while len(scene_gpus) < 100:
             scene_gpus += GPU_IDS.copy()
-        self.scene_gpus = scene_gpus
+        self.scene_gpus = scene_gpus  # 生成100个GPU编号（循环填充）
 
-        self.scene_used_ports = []
+        self.scene_used_ports = []  # 记录当前已分配/使用的端口
 
     def ping(self) -> bool:
-        return True
+        return True  # 健康检查，客户端可用来测试服务端是否在线
 
     def _open_scenes(self, ip: str , scen_ids: list):
         # 打印开始关闭场景的时间和提示
@@ -316,7 +316,7 @@ class EventHandler(object):
         while len(ports) < len(scen_ids):
             pid = FromPortGetPid(self.scene_ports[index])
             if pid is None or not isinstance(pid, int):
-                ports.append(self.scene_ports[index])
+                ports.append(self.scene_ports[index])  # 端口未被占用则加入
             index += 1
 
         # 再次确保这些端口没有被占用，杀死相关进程
@@ -337,10 +337,10 @@ class EventHandler(object):
             # 递归查找ENVs目录下对应场景的AirVLN.sh脚本
             res = glob.glob((str(SEARCH_ENVs_PATH) + '/**/' + 'env_' + str(scen_id) + '/LinuxNoEditor/AirVLN.sh'), recursive=True)
             if len(res) > 0:
-                choose_env_exe_paths.append(res[0])
+                choose_env_exe_paths.append(res[0])  # 找到脚本则加入
             else:
                 print(f'can not find scene file: {scen_id}')
-                raise KeyError
+                raise KeyError  # 没找到则报错
 
 
         # 4. 启动每个场景
@@ -348,7 +348,7 @@ class EventHandler(object):
         for index in range(len(scen_ids)):
             # 生成airsim settings配置
             airsim_settings = create_drones()
-            airsim_settings['ApiServerPort'] = int(ports[index])
+            airsim_settings['ApiServerPort'] = int(ports[index])  # 设置端口
             airsim_settings_write_content = json.dumps(airsim_settings)
             # 创建settings目录
             if not os.path.exists(str(CWD_DIR / 'airsim_plugin/settings' / str(index+1))):
@@ -409,7 +409,7 @@ class EventHandler(object):
 
             for line in iter(p.stdout.readline, b''):
                 if 'Drone_' in str(line):
-                    break
+                    break  # 检查进程输出，出现"Drone_"说明场景已启动
 
             try:
                 p.terminate()
@@ -438,11 +438,11 @@ class EventHandler(object):
             thread.join()
         threads = []
 
-        # ChangeNice(ports)
+        # ChangeNice(ports)  # 可选，调整进程优先级
 
-        self.scene_used_ports += copy.deepcopy(ports)
+        self.scene_used_ports += copy.deepcopy(ports)  # 记录已用端口
 
-        return True, (ip, ports)
+        return True, (ip, ports)  # 返回成功标志、IP和端口列表
 
     def reopen_scenes(self, ip: str, scen_ids: list):
         print(
@@ -451,7 +451,7 @@ class EventHandler(object):
             )
         )
         try:
-            result = self._open_scenes(ip, scen_ids)
+            result = self._open_scenes(ip, scen_ids)  # 调用_open_scenes实际打开场景
         except Exception as e:
             print(e)
             result = False, None
@@ -460,7 +460,7 @@ class EventHandler(object):
                 str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())),
             )
         )
-        return result
+        return result  # 返回_open_scenes的结果
 
     def close_scenes(self, ip: str) -> bool:
         print(
@@ -470,10 +470,10 @@ class EventHandler(object):
         )
 
         try:
-            KillPorts(self.scene_used_ports)
-            self.scene_used_ports = []
-            # KillPorts(self.scene_ports)
-            # KillAirVLN()
+            KillPorts(self.scene_used_ports)  # 杀死所有已用端口的进程
+            self.scene_used_ports = []        # 清空已用端口记录
+            # KillPorts(self.scene_ports)     # 可选，杀死所有scene_ports
+            # KillAirVLN()                   # 可选，杀死所有AirVLN进程
 
             result = True
         except Exception as e:
@@ -485,7 +485,7 @@ class EventHandler(object):
                 str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())),
             )
         )
-        return result
+        return result  # 返回是否成功
 
 
 def serve_background(server, daemon=False):
