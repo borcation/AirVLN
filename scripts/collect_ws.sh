@@ -13,7 +13,8 @@ rm -rf ./DATA/img_features/collect/AirVLN-seq2seq  # 删除指定目录
 cd ./AirVLN
 echo $PWD
 
-export CUDA_VISIBLE_DEVICES=0
+#设置使用的显卡编号，0,1,2,3表示使用4张显卡
+export CUDA_VISIBLE_DEVICES=0,1,2,3
 
 #注意，对于airsim程序，在有核显的机器上，gpu0通常是核显，gpu1才是独立显卡，请务必确认
 #确认方法为手动运行以下指令，观察程序跑在哪儿
