@@ -9,8 +9,9 @@ import cv2
 import os
 import matplotlib.pyplot as plt
 
-save_dir = '/home/vergil/AirVLN_ws/DATA/img_features/collect/AirVLN-seq2seq/pic'  # 保存路径
-os.makedirs(save_dir, exist_ok=True)  # 如果目录不存在则创建
+# 如果要保存图片，请取消下面两行的注释，并设置保存路径，并且下面的代码中保存图片的地方也取消注释
+# save_dir = '/home/vergil/AirVLN_ws/DATA/img_features/collect/AirVLN-seq2seq/pic'  # 保存路径
+# os.makedirs(save_dir, exist_ok=True)  # 如果目录不存在则创建
 
 if __name__ == '__main__':
     import sys

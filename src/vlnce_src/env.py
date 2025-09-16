@@ -38,8 +38,11 @@ def load_my_datasets(splits): #splits = ['train']
             split, number = components[0], int(components[1])  # 分割名和数量 #当前不分割
 
         # Load Json
-        with open(str(Path(args.project_prefix) / 'DATA/data/test/{}.json'.format(split)), 'r', encoding='utf-8') as f:  # 打开对应split的json文件
-            new_data = json.load(f)  # 加载json内容，/data/test/train.json
+        # 在此处修改训练数据集路径（文件夹）
+        # 在此处修改训练数据集路径（文件夹）
+        # 在此处修改训练数据集路径（文件夹）
+        with open(str(Path(args.project_prefix) / 'DATA/data/test1000/{}.json'.format(split)), 'r', encoding='utf-8') as f:  # 打开对应split的json文件
+            new_data = json.load(f)  # 加载json内容，/data/test/aerialvln.json
             # vocab = new_data['instruction_vocab']  # （注释掉）理论上可以加载词表
             new_data = new_data['episodes']  # 只取episodes部分
 

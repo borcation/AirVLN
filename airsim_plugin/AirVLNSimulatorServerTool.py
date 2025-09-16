@@ -369,6 +369,7 @@ class EventHandler(object):
                     gpus[index],
                     str(CWD_DIR / 'airsim_plugin/settings' / str(index+1) / 'settings.json'),
                 )
+                #示例 /home/work/AirVLN_ws/ENVs/env_11/env_11/LinuxNoEditor/AirVLN/Binaries/Linux/AirVLN-Linux-Shipping AirVLN -RenderOffscreen -NoSound -NoVSync -GraphicsAdapter=0 --settings /home/work/AirVLN_ws/AirVLN/airsim_plugin/settings/1/settings.json
 
                 try:
                     # 启动子进程运行场景

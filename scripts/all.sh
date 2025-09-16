@@ -24,21 +24,27 @@ run_and_log() {
     echo -e "$result" >> $log_file
 }
 
-run_and_log AirVLN/scripts/collect_gpus.sh "collect_gpus"
-run_and_log AirVLN/scripts/collect_bs4_gpus.sh "collect_bs4_gpus"
-run_and_log AirVLN/scripts/collect_bs2_gpus.sh "collect_bs2_gpus"
-run_and_log AirVLN/scripts/collect_bs4.sh "collect_bs4"
-run_and_log AirVLN/scripts/collect_bs2.sh "collect_bs2"
-run_and_log AirVLN/scripts/collect.sh    "collect"
+# run_and_log AirVLN/scripts/collect_gpus.sh "collect_gpus"
+# run_and_log AirVLN/scripts/collect_bs4_gpus.sh "collect_bs4_gpus"
+# run_and_log AirVLN/scripts/collect_bs2_gpus.sh "collect_bs2_gpus"
+# run_and_log AirVLN/scripts/collect_bs4.sh "collect_bs4"
+# run_and_log AirVLN/scripts/collect_bs2.sh "collect_bs2"
+# run_and_log AirVLN/scripts/collect.sh    "collect"
 
-run_and_log AirVLN/scripts/train_bs16_ep5.sh  "train_bs16_ep5"
-run_and_log AirVLN/scripts/train_bs16_ep10.sh "train_bs16_ep10"
-run_and_log AirVLN/scripts/train_bs16_ep20.sh "train_bs16_ep20"
-run_and_log AirVLN/scripts/train_bs8_ep5.sh  "train_bs8_ep5"
-run_and_log AirVLN/scripts/train_bs8_ep10.sh "train_bs8_ep10"
-run_and_log AirVLN/scripts/train_bs8_ep20.sh "train_bs8_ep20"
-run_and_log AirVLN/scripts/train_bs4_ep5.sh  "train_bs4_ep5"
-run_and_log AirVLN/scripts/train_bs4_ep10.sh  "train_bs4_ep10"
-run_and_log AirVLN/scripts/train_bs4_ep50.sh  "train_bs4_ep50"
+# run_and_log AirVLN/scripts/train_bs16_ep5.sh  "train_bs16_ep5"
+# run_and_log AirVLN/scripts/train_bs16_ep10.sh "train_bs16_ep10"
+# run_and_log AirVLN/scripts/train_bs16_ep20.sh "train_bs16_ep20"
+# run_and_log AirVLN/scripts/train_bs8_ep5.sh  "train_bs8_ep5"
+# run_and_log AirVLN/scripts/train_bs8_ep10.sh "train_bs8_ep10"
+# run_and_log AirVLN/scripts/train_bs8_ep20.sh "train_bs8_ep20"
+# run_and_log AirVLN/scripts/train_bs4_ep5.sh  "train_bs4_ep5"
+# run_and_log AirVLN/scripts/train_bs4_ep10.sh  "train_bs4_ep10"
+# run_and_log AirVLN/scripts/train_bs4_ep50.sh  "train_bs4_ep50"
 
-run_and_log AirVLN/scripts/eval.sh     "eval"
+# run_and_log AirVLN/scripts/eval.sh     "eval"
+
+#测试collect_ws.sh脚本，batchsize可调，分别测试1，2，4，8，16
+for bs in 1 2 4 8 16; do
+    export BATCH_SIZE=$bs
+    run_and_log AirVLN/scripts/collect_ws.sh "collect_ws_bs$bs"
+done
