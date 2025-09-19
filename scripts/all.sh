@@ -6,7 +6,7 @@ format_time() {
     printf "%02d:%02d:%02d" $((T/3600)) $(( (T%3600)/60 )) $((T%60))
 }
 
-log_file="pipeline_time.log"
+log_file="test_$(date +%Y%m%d_%H%M%S).log"
 > $log_file  # 清空日志文件
 
 run_and_log() {
@@ -43,8 +43,8 @@ run_and_log() {
 
 # run_and_log AirVLN/scripts/eval.sh     "eval"
 
-#测试collect_ws.sh脚本，batchsize可调，分别测试1，2，4，8，16
-for bs in 1 2 4 8 16; do
-    export BATCH_SIZE=$bs
-    run_and_log AirVLN/scripts/collect_ws.sh "collect_ws_bs$bs"
-done
+# #测试collect_ws.sh脚本，batchsize可调，分别测试1，2，4，8，16
+# for bs in 8 4; do
+#     export BATCH_SIZE=$bs
+#     run_and_log AirVLN/scripts/collect_ws.sh "collect_ws_bs$bs"
+# done
