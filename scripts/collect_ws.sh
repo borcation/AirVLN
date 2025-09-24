@@ -8,7 +8,7 @@ lsof -ti:30000 | xargs -r kill -9
 
 conda activate AirVLN
 
-rm -rf ./DATA/img_features/collect/AirVLN-seq2seq-s  # 删除指定目录
+rm -rf ./DATA/img_features/collect/AirVLN-cma-1000  # 删除指定目录
 
 cd ./AirVLN
 echo $PWD
@@ -27,10 +27,15 @@ sleep 5
 
 python -u ./src/vlnce_src/train.py \
 --run_type collect \
---policy_type seq2seq \
+--policy_type cma \
 --collect_type TF \
---name AirVLN-seq2seq-s \
+--name AirVLN-cma-1000 \
+--use_clip_encoders \
+--use_clip_depth_encoder \
+--clip_model_name "openai/clip-vit-base-patch32" \
+--freeze_clip_backbone \
 --batchSize "${BATCH_SIZE:-1}"  # batchSize为外部参数BATCH_SIZE，默认值为1，可通过环境变量传入
+
 
 #这里的batchsize是指每个显卡上运行的模拟器的个数
 #收集的时候，一张显卡最好不要超过2个batch，batchsize会均分到每个显卡上

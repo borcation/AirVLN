@@ -16,6 +16,8 @@ import torch
 import torch.distributed as dist
 import torch.backends.cudnn as cudnn
 from tensorboardX import SummaryWriter
+import cv2
+from PIL import Image
 
 from typing import List, Optional, DefaultDict
 import msgpack_numpy
@@ -526,6 +528,93 @@ def collect_data(data_it=0):
     p = 1.0
     beta = 1.0
 
+    # 初始化图像保存目录
+    if args.run_type == 'collect' and args.collect_type in ['TF']:
+        images_save_dir = str(Path(args.project_prefix) / 'DATA' / 'img_features' / 'collect' / str(args.name) / 'images')
+        rgb_save_dir = os.path.join(images_save_dir, 'rgb')
+        depth_save_dir = os.path.join(images_save_dir, 'depth')
+        
+        os.makedirs(rgb_save_dir, exist_ok=True)
+        os.makedirs(depth_save_dir, exist_ok=True)
+        
+        logger.info(f'RGB images will be saved to: {rgb_save_dir}')
+        logger.info(f'Depth images will be saved to: {depth_save_dir}')
+    else:
+        rgb_save_dir = None
+        depth_save_dir = None
+
+    def save_rgb_image(rgb_data, scene_id, trajectory_id, step_id, save_dir):
+        """保存RGB图像为PNG文件"""
+        if save_dir is None:
+            return
+        try:
+            # 确保RGB数据格式正确
+            if isinstance(rgb_data, torch.Tensor):
+                rgb_data = rgb_data.cpu().numpy()
+            
+            # 转换数据类型和形状
+            if rgb_data.dtype == np.float32 or rgb_data.dtype == np.float64:
+                rgb_data = (rgb_data * 255).astype(np.uint8)
+            elif rgb_data.dtype != np.uint8:
+                rgb_data = rgb_data.astype(np.uint8)
+            
+            # 确保形状为 (H, W, 3)
+            if rgb_data.shape[-1] == 3:  # 已经是 (H, W, 3)
+                pass
+            elif len(rgb_data.shape) == 3 and rgb_data.shape[0] == 3:  # (3, H, W)
+                rgb_data = np.transpose(rgb_data, (1, 2, 0))
+            
+            filename = f'scene{scene_id}_traj{trajectory_id}_rgb_{step_id:04d}.png'
+            filepath = os.path.join(save_dir, filename)
+            
+            # 使用PIL保存图像
+            Image.fromarray(rgb_data).save(filepath)
+            
+            # 每保存100张图像记录一次日志
+            if step_id % 100 == 0:
+                logger.info(f'Saved RGB image: {filename} (shape: {rgb_data.shape})')
+        except Exception as e:
+            logger.warning(f'Failed to save RGB image {filename}: {e}')
+
+    def save_depth_image(depth_data, scene_id, trajectory_id, step_id, save_dir):
+        """保存深度图像为PNG文件"""
+        if save_dir is None:
+            return
+        try:
+            # 确保深度数据格式正确
+            if isinstance(depth_data, torch.Tensor):
+                depth_data = depth_data.cpu().numpy()
+            
+            # 如果深度图有多个通道，取第一个通道
+            if len(depth_data.shape) == 3:
+                if depth_data.shape[-1] == 1:  # (H, W, 1)
+                    depth_data = depth_data.squeeze(-1)
+                elif depth_data.shape[0] == 1:  # (1, H, W)
+                    depth_data = depth_data.squeeze(0)
+                else:
+                    depth_data = depth_data[:, :, 0]  # 取第一个通道
+            
+            # 标准化深度值到0-255范围
+            if depth_data.max() > depth_data.min():
+                depth_normalized = ((depth_data - depth_data.min()) / (depth_data.max() - depth_data.min()) * 255).astype(np.uint8)
+            else:
+                depth_normalized = np.zeros_like(depth_data, dtype=np.uint8)
+            
+            filename = f'scene{scene_id}_traj{trajectory_id}_dpt_{step_id:04d}.png'
+            filepath = os.path.join(save_dir, filename)
+            
+            # 使用PIL保存图像
+            Image.fromarray(depth_normalized).save(filepath)
+            
+            # 每保存100张图像记录一次日志
+            if step_id % 100 == 0:
+                logger.info(f'Saved depth image: {filename} (shape: {depth_normalized.shape})')
+        except Exception as e:
+            logger.warning(f'Failed to save depth image {filename}: {e}')
+
+    # 初始化步数计数器
+    step_counter = {}  # 用于跟踪每个轨迹的步数
+
 
     #
     with torch.no_grad():
@@ -588,25 +677,29 @@ def collect_data(data_it=0):
                     if dones[i] and not skips[i]:
                         if args.collect_type in ['TF']:
                             _episodes = episodes[i].copy()
+                            # 为每个不同的指令版本创建特征
                             for _i, _j in enumerate(train_env.trajectory_id_2_instruction_tokens[infos[i]['trajectory_id']]):
                                 for __i, __j in enumerate(_episodes):
-                                    _episodes[__i][0]['instruction'] = _j
+                                    _episodes[__i][0]['instruction'] = _j # 设置指令tokens
 
                                 ep = _episodes.copy()
+                                # 批处理观察数据
                                 traj_obs = batch_obs(
-                                    [step[0] for step in ep],
+                                    [step[0] for step in ep], # 提取每步的观察数据
                                     device=torch.device("cpu"),
                                 )
                                 del traj_obs['teacher_action']
                                 for k, v in traj_obs.items():
-                                    traj_obs[k] = v.numpy()
+                                    traj_obs[k] = v.numpy() # 转换为numpy格式
 
+                                # 构建完整的episode数据
                                 transposed_ep = [
-                                    traj_obs,
-                                    np.array([step[1] for step in ep], dtype=np.int64),
-                                    np.array([step[2] for step in ep], dtype=np.int64),
+                                    traj_obs, # 包含instruction等观察数据
+                                    np.array([step[1] for step in ep], dtype=np.int64), # prev_actions
+                                    np.array([step[2] for step in ep], dtype=np.int64), # oracle_actions
                                 ]
-
+                                
+                                # 保存到LMDB数据库
                                 train_env.threading_lock_lmdb_features_txn.acquire()
                                 lmdb_key = str(train_env.trajectory_id_2_episode_ids[infos[i]['trajectory_id']][_i])
                                 train_env.lmdb_features_txn.put(
@@ -707,13 +800,55 @@ def collect_data(data_it=0):
                 )
 
                 for i in range(train_env.batch_size):
+                    # 在删除原始图像数据之前保存图像文件
+                    if args.run_type == 'collect' and args.collect_type in ['TF'] and i not in envs_to_pause:
+                        try:
+                            # 获取标识信息，优先使用trajectory_id，其次使用episode_id
+                            trajectory_id = infos[i].get('trajectory_id', 'unknown') if len(infos) > i else 'unknown'
+                            episode_id = infos[i].get('episode_id', 'unknown') if len(infos) > i else 'unknown'
+                            scene_id = infos[i].get('scene_id', 'scene1') if len(infos) > i else 'scene1'
+                            
+                            # 如果没有trajectory_id，使用episode_id作为替代
+                            if trajectory_id == 'unknown' and episode_id != 'unknown':
+                                trajectory_id = episode_id
+                            
+                            # 生成唯一的步数标识符
+                            traj_key = f"{scene_id}_{trajectory_id}"
+                            if traj_key not in step_counter:
+                                step_counter[traj_key] = 0
+                            step_id = step_counter[traj_key]
+                            step_counter[traj_key] += 1
+                            
+                            # 保存RGB图像
+                            if 'rgb' in observations[i] and not args.ablate_rgb:
+                                save_rgb_image(
+                                    observations[i]['rgb'], 
+                                    scene_id, 
+                                    trajectory_id, 
+                                    step_id, 
+                                    rgb_save_dir
+                                )
+                            
+                            # 保存深度图像
+                            if 'depth' in observations[i] and not args.ablate_depth:
+                                save_depth_image(
+                                    observations[i]['depth'], 
+                                    scene_id, 
+                                    trajectory_id, 
+                                    step_id, 
+                                    depth_save_dir
+                                )
+                        except Exception as e:
+                            logger.warning(f'Failed to save images for step {i}: {e}')
+                    
+                    # 原有的特征提取逻辑
                     if not args.ablate_rgb and rgb_features is not None:
                         observations[i]["rgb_features"] = rgb_features[i]
-                        del observations[i]["rgb"]
+                        del observations[i]["rgb"]  # 删除原始RGB数据
 
                     if not args.ablate_depth and depth_features is not None:
                         observations[i]["depth_features"] = depth_features[i]
-                        del observations[i]["depth"]
+                        del observations[i]["depth"]  # 删除原始深度数据
 
                     if i in envs_to_pause:
                         continue
@@ -858,6 +993,26 @@ def collect_data(data_it=0):
         pbar.close()
     except:
         pass
+
+    # 显示图像保存统计信息
+    if args.run_type == 'collect' and args.collect_type in ['TF']:
+        total_steps = sum(step_counter.values()) if step_counter else 0
+        logger.info(f'Image saving summary:')
+        logger.info(f'  - Total steps processed: {total_steps}')
+        logger.info(f'  - RGB images saved to: {rgb_save_dir}')
+        logger.info(f'  - Depth images saved to: {depth_save_dir}')
+        logger.info(f'  - Trajectories processed: {len(step_counter)}')
+        
+        # 尝试统计实际保存的文件数量
+        try:
+            if rgb_save_dir and os.path.exists(rgb_save_dir):
+                rgb_count = len([f for f in os.listdir(rgb_save_dir) if f.endswith('.png')])
+                logger.info(f'  - Actual RGB files saved: {rgb_count}')
+            if depth_save_dir and os.path.exists(depth_save_dir):
+                depth_count = len([f for f in os.listdir(depth_save_dir) if f.endswith('.png')])
+                logger.info(f'  - Actual depth files saved: {depth_count}')
+        except Exception as e:
+            logger.warning(f'Failed to count saved files: {e}')
 
     if rgb_hook is not None:
         rgb_hook.remove()

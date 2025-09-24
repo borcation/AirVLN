@@ -65,7 +65,7 @@ AIRSIM_SETTINGS_TEMPLATE = {
 }
 
 
-def create_drones(drone_num_per_env=1, show_scene=False, uav_mode=False) -> dict:
+def create_drones(drone_num_per_env=1, show_scene=False, uav_mode=False) -> dict:  # 需要看画面的时候，这里改为True
     airsim_settings = copy.deepcopy(AIRSIM_SETTINGS_TEMPLATE)
 
     if show_scene == True:
@@ -365,6 +365,9 @@ class EventHandler(object):
             else:
                 # 构造启动命令，指定GPU和settings
                 subprocess_execute = "bash {} -RenderOffscreen -NoSound -NoVSync -GraphicsAdapter={} --settings {} ".format(
+                # 移除-RenderOffscreen以显示画面，添加窗口大小控制
+                # subprocess_execute = "bash {} -NoSound -NoVSync -GraphicsAdapter={} -ResX=800 -ResY=600 -Windowed --settings {} ".format(
+
                     choose_env_exe_paths[index],
                     gpus[index],
                     str(CWD_DIR / 'airsim_plugin/settings' / str(index+1) / 'settings.json'),

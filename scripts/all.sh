@@ -43,8 +43,10 @@ run_and_log() {
 
 # run_and_log AirVLN/scripts/eval.sh     "eval"
 
-# #测试collect_ws.sh脚本，batchsize可调，分别测试1，2，4，8，16
-# for bs in 8 4; do
-#     export BATCH_SIZE=$bs
-#     run_and_log AirVLN/scripts/collect_ws.sh "collect_ws_bs$bs"
-# done
+#测试collect_ws.sh脚本，batchsize可调，分别测试1，2，4，8，16
+for bs in 4 ; do
+    export BATCH_SIZE=$bs
+    run_and_log AirVLN/scripts/collect_ws.sh "collect_ws_bs$bs"
+done
+
+# run_and_log AirVLN/scripts/train_lowmem.sh "train_lowmem"
