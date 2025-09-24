@@ -1,3 +1,4 @@
+
 #!/bin/bash
 
 set -euo pipefail
@@ -13,18 +14,21 @@ cd ./AirVLN
 
 echo "CWD: $PWD"
 
+# # 分布式训练，4卡
+# torchrun --nproc_per_node=4 ./src/vlnce_src/train.py \
 python -u ./src/vlnce_src/train.py \
   --run_type train \
   --policy_type seq2seq \
   --collect_type TF \
-  --name AirVLN-seq2seq \
-  --batchSize 1 \
+  --name AirVLN-seq2seq-s \
+  --batchSize 16 \
   --dagger_it 1 \
-  --epochs 5 \
+  --epochs 500 \
   --lr 0.00025 \
   --trainer_gpu_device 0 \
   --maxAction 500 \
   --amp \
+  # --DistributedDataParallel True \
   # --ablate_rgb
 
 # 说明：
