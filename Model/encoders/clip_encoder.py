@@ -135,6 +135,9 @@ class CLIPVisionEncoder(nn.Module):
         # Use pooled output (CLS token representation)
         clip_features = vision_outputs.pooler_output  # [batch_size, clip_feature_dim]
         
+        # 打印CLIP RGB特征信息到命令行
+        print(f"[CLIP RGB] Features shape: {clip_features.shape}, mean: {clip_features.mean():.4f}, std: {clip_features.std():.4f}, range: [{clip_features.min():.4f}, {clip_features.max():.4f}]")
+        
         # Apply layer_extract hook point (for collect_data compatibility)
         hooked_features = self.layer_extract(clip_features)
         
@@ -300,6 +303,9 @@ class CLIPDepthEncoder(nn.Module):
         # Use pooled output (CLS token representation)
         clip_features = vision_outputs.pooler_output  # [batch_size, clip_feature_dim]
         
+        # 打印CLIP Depth特征信息到命令行
+        print(f"[CLIP DEPTH] Features shape: {clip_features.shape}, mean: {clip_features.mean():.4f}, std: {clip_features.std():.4f}, range: [{clip_features.min():.4f}, {clip_features.max():.4f}]")
+        
         # Apply layer_extract hook point (for collect_data compatibility)
         hooked_features = self.layer_extract(clip_features)
         
@@ -373,6 +379,20 @@ class CLIPTextEncoder(nn.Module):
         instruction_tokens = observations["instruction"]
         batch_size = instruction_tokens.shape[0]
         
+        # CLIP models have a maximum sequence length (usually 77)
+        max_seq_length = 77  # Standard CLIP max length
+        
+        # Truncate or pad to CLIP's expected length
+        if instruction_tokens.shape[1] > max_seq_length:
+            # Truncate to max length
+            instruction_tokens = instruction_tokens[:, :max_seq_length]
+            print(f"[CLIP TEXT] Truncated instruction from {observations['instruction'].shape[1]} to {max_seq_length} tokens")
+        elif instruction_tokens.shape[1] < max_seq_length:
+            # Pad with zeros to max length
+            padded_tokens = torch.zeros(batch_size, max_seq_length, dtype=instruction_tokens.dtype, device=instruction_tokens.device)
+            padded_tokens[:, :instruction_tokens.shape[1]] = instruction_tokens
+            instruction_tokens = padded_tokens
+        
         # Create attention mask (1 for real tokens, 0 for padding)
         attention_mask = (instruction_tokens != 0).long()
         
@@ -390,6 +410,11 @@ class CLIPTextEncoder(nn.Module):
             # Return sequence outputs for attention mechanism
             # Shape: [batch_size, seq_len, hidden_size]
             sequence_output = text_outputs.last_hidden_state
+            
+            # Apply padding mask to sequence output (set padded positions to 0)
+            # This is important for compatibility with CMA attention mechanism
+            expanded_attention_mask = attention_mask.unsqueeze(-1).expand_as(sequence_output)
+            sequence_output = sequence_output * expanded_attention_mask.float()
             
             # Transpose to match expected format [batch_size, hidden_size, seq_len]
             return sequence_output.transpose(1, 2)
@@ -420,8 +445,18 @@ class CLIPInstructionEncoder(nn.Module):
         self.config = type('Config', (), {})()
         self.config.final_state_only = final_state_only
         
-        # Get the output dimension
-        self._output_size = self.text_model.config.hidden_size
+        # Get the CLIP output dimension
+        self.clip_output_size = self.text_model.config.hidden_size
+        
+        # For CMA compatibility, we need to match the original instruction encoder output size
+        # Original: hidden_size * (1 + bidirectional) = 128 * 2 = 256
+        self.target_output_size = 256  # Match original instruction encoder
+        
+        # Projection layer to match original encoder dimensions
+        self.projection = nn.Linear(self.clip_output_size, self.target_output_size)
+        
+        # Set output size for compatibility
+        self._output_size = self.target_output_size
 
     @property
     def output_size(self):
@@ -440,6 +475,21 @@ class CLIPInstructionEncoder(nn.Module):
         # Get instruction tokens
         instruction_tokens = observations["instruction"]
         
+        # CLIP models have a maximum sequence length (usually 77)
+        max_seq_length = 77  # Standard CLIP max length
+        
+        # Truncate or pad to CLIP's expected length
+        if instruction_tokens.shape[1] > max_seq_length:
+            # Truncate to max length
+            instruction_tokens = instruction_tokens[:, :max_seq_length]
+            print(f"[CLIP TEXT] Truncated instruction from {observations['instruction'].shape[1]} to {max_seq_length} tokens")
+        elif instruction_tokens.shape[1] < max_seq_length:
+            # Pad with zeros to max length
+            batch_size = instruction_tokens.shape[0]
+            padded_tokens = torch.zeros(batch_size, max_seq_length, dtype=instruction_tokens.dtype, device=instruction_tokens.device)
+            padded_tokens[:, :instruction_tokens.shape[1]] = instruction_tokens
+            instruction_tokens = padded_tokens
+        
         # Create attention mask (1 for real tokens, 0 for padding)
         attention_mask = (instruction_tokens != 0).long()
         
@@ -452,9 +502,26 @@ class CLIPInstructionEncoder(nn.Module):
         
         if self.config.final_state_only:
             # Return pooled output [batch_size, output_size]
-            return text_outputs.pooler_output
+            clip_text_features = text_outputs.pooler_output
+            # Apply projection to match original encoder dimensions
+            clip_text_features = self.projection(clip_text_features)
+            # 打印CLIP指令特征信息到命令行
+            print(f"[CLIP TEXT] Features shape: {clip_text_features.shape}, mean: {clip_text_features.mean():.4f}, std: {clip_text_features.std():.4f}, range: [{clip_text_features.min():.4f}, {clip_text_features.max():.4f}]")
+            return clip_text_features
         else:
             # Return sequence outputs for attention mechanism
             # Shape: [batch_size, seq_len, hidden_size] -> [batch_size, hidden_size, seq_len]
             sequence_output = text_outputs.last_hidden_state
+            
+            # Apply projection to match original encoder dimensions
+            # sequence_output shape: [batch_size, seq_len, clip_hidden_size]
+            sequence_output = self.projection(sequence_output)  # -> [batch_size, seq_len, target_hidden_size]
+            
+            # Apply padding mask to sequence output (set padded positions to 0)
+            # This is important for compatibility with CMA attention mechanism
+            expanded_attention_mask = attention_mask.unsqueeze(-1).expand_as(sequence_output)
+            sequence_output = sequence_output * expanded_attention_mask.float()
+            
+            # 打印CLIP指令序列特征信息到命令行
+            print(f"[CLIP TEXT SEQ] Features shape: {sequence_output.shape}, mean: {sequence_output.mean():.4f}, std: {sequence_output.std():.4f}, range: [{sequence_output.min():.4f}, {sequence_output.max():.4f}]")
             return sequence_output.transpose(1, 2)

@@ -495,33 +495,86 @@ def initialize_trainer():
 
 def collect_data(data_it=0):
     logger.info(args)
+    
+    # 打印CLIP配置信息到命令行
+    if hasattr(args, 'use_clip_encoders') and args.use_clip_encoders:
+        print("="*50)
+        print("[CLIP CONFIG] CLIP encoders are ENABLED!")
+        print(f"  - use_clip_encoders: {args.use_clip_encoders}")
+        print(f"  - use_clip_depth_encoder: {getattr(args, 'use_clip_depth_encoder', False)}")
+        print(f"  - clip_model_name: {getattr(args, 'clip_model_name', 'not set')}")
+        print(f"  - freeze_clip_backbone: {getattr(args, 'freeze_clip_backbone', False)}")
+        print("="*50)
+    else:
+        print("="*50)
+        print("[CLIP CONFIG] CLIP encoders are DISABLED - using ResNet encoders")
+        print("="*50)
 
     train_env = initialize_env(split='train')
     trainer = initialize_trainer()
+
+    # 打印编码器信息
+    print(f"RGB Encoder type: {type(trainer.policy.net.rgb_encoder).__name__}")
+    print(f"Depth Encoder type: {type(trainer.policy.net.depth_encoder).__name__}")
+    
+    # 检查编码器的可用属性
+    rgb_attrs = [attr for attr in dir(trainer.policy.net.rgb_encoder) if not attr.startswith('_')]
+    depth_attrs = [attr for attr in dir(trainer.policy.net.depth_encoder) if not attr.startswith('_')]
+    print(f"RGB Encoder key attributes: {[attr for attr in rgb_attrs if 'layer' in attr or 'visual' in attr or 'extract' in attr]}")
+    print(f"Depth Encoder key attributes: {[attr for attr in depth_attrs if 'layer' in attr or 'visual' in attr or 'extract' in attr]}")
 
     if torch.cuda.is_available():
         with torch.cuda.device(trainer.device):
             torch.cuda.empty_cache()
 
-    def hook_builder(tgt_tensor):
+    def hook_builder(tgt_tensor_list):
+        counter = [0]  # 使用列表保持可变性
         def hook(m, i, o):
-            tgt_tensor.set_(o.cpu())
-
+            counter[0] += 1
+            if counter[0] % 10 == 1:  # 减少打印频率
+                print(f"Hook called {counter[0]} times, output shape: {o.shape}")
+            
+            # 处理批次输出，为每个环境分配特征
+            batch_size = o.shape[0]
+            for batch_idx in range(min(batch_size, len(tgt_tensor_list))):
+                if batch_idx < len(tgt_tensor_list):
+                    tgt_tensor_list[batch_idx].set_(o[batch_idx:batch_idx+1].cpu())
         return hook
 
-    rgb_features = torch.zeros((1,), device="cpu")
+    # 初始化多环境特征容器
+    num_environments = train_env.batch_size
+    rgb_features = [torch.zeros(1, dtype=torch.float32) for _ in range(num_environments)]
     if not args.ablate_rgb:
-        rgb_hook = trainer.policy.net.rgb_encoder.layer_extract.register_forward_hook(
-            hook_builder(rgb_features)
-        )
+        # 检查rgb encoder类型并使用正确的hook点
+        if hasattr(trainer.policy.net.rgb_encoder, 'layer_extract'):
+            rgb_hook = trainer.policy.net.rgb_encoder.layer_extract.register_forward_hook(
+                hook_builder(rgb_features)
+            )
+            print('RGB hook registered on layer_extract', rgb_hook)
+        else:
+            print('Warning: No layer_extract found for rgb encoder')
+            rgb_hook = None
     else:
         rgb_hook = None
 
-    depth_features = torch.zeros((1,), device="cpu")
+    depth_features = [torch.zeros(1, dtype=torch.float32) for _ in range(num_environments)]
     if not args.ablate_depth:
-        depth_hook = trainer.policy.net.depth_encoder.visual_encoder.register_forward_hook(
-            hook_builder(depth_features)
-        )
+        # 检查depth encoder类型并使用正确的hook点
+        if hasattr(trainer.policy.net.depth_encoder, 'layer_extract'):
+            # CLIP depth encoder使用layer_extract
+            depth_hook = trainer.policy.net.depth_encoder.layer_extract.register_forward_hook(
+                hook_builder(depth_features)
+            )
+            print('Depth hook registered on layer_extract', depth_hook)
+        elif hasattr(trainer.policy.net.depth_encoder, 'visual_encoder'):
+            # 传统depth encoder使用visual_encoder
+            depth_hook = trainer.policy.net.depth_encoder.visual_encoder.register_forward_hook(
+                hook_builder(depth_features)
+            )
+            print('Depth hook registered on visual_encoder', depth_hook)
+        else:
+            print('Warning: No suitable hook point found for depth encoder')
+            depth_hook = None
     else:
         depth_hook = None
 
@@ -665,7 +718,7 @@ def collect_data(data_it=0):
             envs_to_pause = []
 
             outputs = train_env.reset()
-            observations, _, dones, _ = [list(x) for x in zip(*outputs)]
+            observations, _, dones, infos = [list(x) for x in zip(*outputs)]
             batch = batch_obs(observations, trainer.device)
 
             ended = False
@@ -702,6 +755,17 @@ def collect_data(data_it=0):
                                 # 保存到LMDB数据库
                                 train_env.threading_lock_lmdb_features_txn.acquire()
                                 lmdb_key = str(train_env.trajectory_id_2_episode_ids[infos[i]['trajectory_id']][_i])
+                                
+                                # 打印CLIP特征保存到LMDB的信息
+                                if hasattr(args, 'use_clip_encoders') and args.use_clip_encoders:
+                                    obs_keys = list(traj_obs.keys())
+                                    feature_keys = [k for k in obs_keys if 'features' in k]
+                                    print(f"[LMDB SAVE] Episode {lmdb_key}: Saving features with keys: {feature_keys}")
+                                    for k in feature_keys:
+                                        if k in traj_obs:
+                                            feat_shape = traj_obs[k].shape if hasattr(traj_obs[k], 'shape') else 'unknown'
+                                            print(f"  - {k}: shape {feat_shape}")
+                                
                                 train_env.lmdb_features_txn.put(
                                     lmdb_key.encode(),
                                     msgpack_numpy.packb(

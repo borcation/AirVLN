@@ -273,6 +273,8 @@ class CMANet(nn.Module):
         else:
             # 使用指令编码器处理observations中的instruction
             instruction_embedding = self.instruction_encoder(observations)
+            if args.use_clip_encoders:
+                print(f"[CMA POLICY] Using CLIP instruction encoder, output shape: {instruction_embedding.shape}")
 
         if args.ablate_depth:
             depth_embedding = torch.zeros(
@@ -282,6 +284,8 @@ class CMANet(nn.Module):
             )
         else:
             depth_embedding = self.depth_encoder(observations)
+            if args.use_clip_encoders and args.use_clip_depth_encoder:
+                print(f"[CMA POLICY] Using CLIP depth encoder, output shape: {depth_embedding.shape}")
         depth_embedding = torch.flatten(depth_embedding, 2)
 
         if args.ablate_rgb:
@@ -292,6 +296,8 @@ class CMANet(nn.Module):
             )
         else:
             rgb_embedding = self.rgb_encoder(observations)
+            if args.use_clip_encoders:
+                print(f"[CMA POLICY] Using CLIP RGB encoder, output shape: {rgb_embedding.shape}")
         rgb_embedding = torch.flatten(rgb_embedding, 2)
 
         rgb_in = self.rgb_linear(rgb_embedding)

@@ -95,23 +95,24 @@ class InstructionEncoder(nn.Module):
             lengths: [batch_size]
             hidden_state: [batch_size x hidden_size]
         """
-        instruction = observations["instruction"].long()
+        instruction = observations["instruction"].long()    # 获取指令tokens
         lengths = (instruction != 0.0).long().sum(dim=1)
-        instruction = self.embedding_layer(instruction)
+        instruction = self.embedding_layer(instruction)     # 词嵌入
 
         lengths = (instruction != 0.0).long().sum(dim=2)
         lengths = (lengths != 0.0).long().sum(dim=1)
 
+        # 使用RNN处理序列
         packed_seq = nn.utils.rnn.pack_padded_sequence(
             instruction, lengths.cpu(), batch_first=True, enforce_sorted=False
         )
 
-        output, final_state = self.encoder_rnn(packed_seq)
+        output, final_state = self.encoder_rnn(packed_seq)   # LSTM编码
 
         final_state = final_state[0]
 
         if self.config.final_state_only:
-            return final_state.squeeze(0)
+            return final_state.squeeze(0)   # 返回最终隐藏状态作为文本特征
         else:
             return nn.utils.rnn.pad_packed_sequence(output, batch_first=True)[
                 0
