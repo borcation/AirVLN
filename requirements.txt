@@ -72,6 +72,8 @@ texttable==1.6.7
 tokenizers==0.13.3
 tqdm==4.66.1
 transformers==4.32.1
+# For CLIP models - compatible with transformers version
+accelerate>=0.20.0
 # typing_extensions==4.7.1
 typing_extensions==4.8.0
 tzdata==2023.3

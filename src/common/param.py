@@ -58,6 +58,10 @@ class Param:
 
         self.parser.add_argument('--rgb_encoder_use_place365', action="store_true")
         self.parser.add_argument('--tokenizer_use_bert', action="store_true")
+        self.parser.add_argument('--use_clip_encoders', action="store_true", help="Use CLIP encoders for both RGB and instruction")
+        self.parser.add_argument('--use_clip_depth_encoder', action="store_true", help="Use CLIP encoder for depth images as well")
+        self.parser.add_argument('--clip_model_name', type=str, default="openai/clip-vit-base-patch32", help="CLIP model name")
+        self.parser.add_argument('--freeze_clip_backbone', action="store_true", help="Freeze CLIP backbone parameters")
 
         self.parser.add_argument("--simulator_tool_port", type=int, default=30000, help="simulator_tool port")
         self.parser.add_argument("--DDP_MASTER_PORT", type=int, default=20000, help="DDP MASTER_PORT")

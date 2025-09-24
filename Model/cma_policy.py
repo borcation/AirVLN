@@ -7,6 +7,7 @@ from gym import Space
 from Model.policy import ILPolicy
 from Model.encoders.instruction_encoder import InstructionEncoder, InstructionBertEncoder
 from Model.encoders.resnet_encoders import TorchVisionResNet50, TorchVisionResNet50Place365, VlnResnetDepthEncoder
+from Model.encoders.clip_encoder import CLIPVisionEncoder, CLIPInstructionEncoder, CLIPDepthEncoder
 from Model.encoders.rnn_state_encoder import build_rnn_state_encoder
 from Model.aux_losses import AuxLosses
 from Model.utils.CN import CN
@@ -69,18 +70,40 @@ class CMANet(nn.Module):
         self.model_config = model_config
 
         # Init the instruction encoder 1
-        if args.tokenizer_use_bert:
+        if args.use_clip_encoders:
+            self.instruction_encoder = CLIPInstructionEncoder(
+                model_name=args.clip_model_name,
+                freeze_backbone=args.freeze_clip_backbone,
+                final_state_only=False  # CMA needs sequence output for attention
+            )
+        elif args.tokenizer_use_bert:
             self.instruction_encoder = InstructionBertEncoder()
         else:
             self.instruction_encoder = InstructionEncoder()
 
         # Init the depth encoder 2
-        self.depth_encoder = VlnResnetDepthEncoder(
-            observation_space,
-        )
+        if args.use_clip_encoders and args.use_clip_depth_encoder:
+            self.depth_encoder = CLIPDepthEncoder(
+                observation_space,
+                device=device,
+                model_name=args.clip_model_name,
+                freeze_backbone=args.freeze_clip_backbone,
+                spatial_output=True,  # CMA needs spatial output
+                output_size=128  # Match original depth encoder output size
+            )
+        else:
+            self.depth_encoder = VlnResnetDepthEncoder(
+                observation_space,
+            )
 
         # Init the RGB encoder 3
-        if args.rgb_encoder_use_place365:
+        if args.use_clip_encoders:
+            self.rgb_encoder = CLIPVisionEncoder(
+                observation_space, device,
+                model_name=args.clip_model_name,
+                freeze_backbone=args.freeze_clip_backbone
+            )
+        elif args.rgb_encoder_use_place365:
             self.rgb_encoder = TorchVisionResNet50Place365(
                 observation_space, device,
             )
@@ -94,15 +117,29 @@ class CMANet(nn.Module):
         hidden_size = model_config.STATE_ENCODER_hidden_size
         self._hidden_size = hidden_size
 
-        self.rgb_linear = nn.Sequential(
-            nn.AdaptiveAvgPool1d(1),
-            nn.Flatten(),
-            nn.Linear(
-                self.rgb_encoder.output_shape[0],
-                self.rgb_encoder.output_size,
-            ),
-            nn.ReLU(True),
-        )
+        # Adjust linear layers based on encoder type
+        if args.use_clip_encoders:
+            # CLIP encoder has different output format
+            self.rgb_linear = nn.Sequential(
+                nn.AdaptiveAvgPool1d(1),
+                nn.Flatten(),
+                nn.Linear(
+                    self.rgb_encoder.output_shape[0],
+                    self.rgb_encoder.output_size,
+                ),
+                nn.ReLU(True),
+            )
+        else:
+            # Original ResNet encoder
+            self.rgb_linear = nn.Sequential(
+                nn.AdaptiveAvgPool1d(1),
+                nn.Flatten(),
+                nn.Linear(
+                    self.rgb_encoder.output_shape[0],
+                    self.rgb_encoder.output_size,
+                ),
+                nn.ReLU(True),
+            )
         self.depth_linear = nn.Sequential(
             nn.Flatten(),
             nn.Linear(
@@ -220,6 +257,7 @@ class CMANet(nn.Module):
         )  # [BATCH x 32]
 
         if args.ablate_instruction:
+            # 如果禁用指令（消融），则使用零向量
             if self.instruction_encoder.config.final_state_only:
                 instruction_embedding = torch.zeros(
                     size=(prev_actions.shape[0], self.instruction_encoder.output_size),
@@ -233,6 +271,7 @@ class CMANet(nn.Module):
                     device=self.device,
                 )
         else:
+            # 使用指令编码器处理observations中的instruction
             instruction_embedding = self.instruction_encoder(observations)
 
         if args.ablate_depth:
