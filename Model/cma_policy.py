@@ -7,7 +7,7 @@ from gym import Space
 from Model.policy import ILPolicy
 from Model.encoders.instruction_encoder import InstructionEncoder, InstructionBertEncoder
 from Model.encoders.resnet_encoders import TorchVisionResNet50, TorchVisionResNet50Place365, VlnResnetDepthEncoder
-from Model.encoders.clip_encoder import CLIPVisionEncoder, CLIPInstructionEncoder, CLIPDepthEncoder
+from Model.encoders.blip2_encoder import BLIP2VisionEncoder, BLIP2InstructionEncoder, BLIP2DepthEncoder
 from Model.encoders.rnn_state_encoder import build_rnn_state_encoder
 from Model.aux_losses import AuxLosses
 from Model.utils.CN import CN
@@ -70,10 +70,10 @@ class CMANet(nn.Module):
         self.model_config = model_config
 
         # Init the instruction encoder 1
-        if args.use_clip_encoders:
-            self.instruction_encoder = CLIPInstructionEncoder(
-                model_name=args.clip_model_name,
-                freeze_backbone=args.freeze_clip_backbone,
+        if args.use_blip2_encoders:
+            self.instruction_encoder = BLIP2InstructionEncoder(
+                model_name=args.blip2_model_name,
+                freeze_backbone=args.freeze_blip2_backbone,
                 final_state_only=False  # CMA needs sequence output for attention
             )
         elif args.tokenizer_use_bert:
@@ -81,15 +81,15 @@ class CMANet(nn.Module):
         else:
             self.instruction_encoder = InstructionEncoder()
 
-        # Init the depth encoder 2
-        if args.use_clip_encoders and args.use_clip_depth_encoder:
-            self.depth_encoder = CLIPDepthEncoder(
-                observation_space,
+                # Init the depth encoder 2
+        if args.use_blip2_encoders and args.use_blip2_depth_encoder:
+            self.depth_encoder = BLIP2DepthEncoder(
+                observation_space=observation_space,
                 device=device,
-                model_name=args.clip_model_name,
-                freeze_backbone=args.freeze_clip_backbone,
-                spatial_output=True,  # CMA needs spatial output
-                output_size=128  # Match original depth encoder output size
+                model_name=args.blip2_model_name,
+                freeze_backbone=args.freeze_blip2_backbone,
+                spatial_output=True,
+                output_size=128
             )
         else:
             self.depth_encoder = VlnResnetDepthEncoder(
@@ -97,11 +97,11 @@ class CMANet(nn.Module):
             )
 
         # Init the RGB encoder 3
-        if args.use_clip_encoders:
-            self.rgb_encoder = CLIPVisionEncoder(
+        if args.use_blip2_encoders:
+            self.rgb_encoder = BLIP2VisionEncoder(
                 observation_space, device,
-                model_name=args.clip_model_name,
-                freeze_backbone=args.freeze_clip_backbone
+                model_name=args.blip2_model_name,
+                freeze_backbone=args.freeze_blip2_backbone
             )
         elif args.rgb_encoder_use_place365:
             self.rgb_encoder = TorchVisionResNet50Place365(
@@ -118,8 +118,8 @@ class CMANet(nn.Module):
         self._hidden_size = hidden_size
 
         # Adjust linear layers based on encoder type
-        if args.use_clip_encoders:
-            # CLIP encoder has different output format
+        if args.use_blip2_encoders:
+            # BLIP-2 encoder has different output format
             self.rgb_linear = nn.Sequential(
                 nn.AdaptiveAvgPool1d(1),
                 nn.Flatten(),
@@ -273,8 +273,8 @@ class CMANet(nn.Module):
         else:
             # 使用指令编码器处理observations中的instruction
             instruction_embedding = self.instruction_encoder(observations)
-            if args.use_clip_encoders:
-                print(f"[CMA POLICY] Using CLIP instruction encoder, output shape: {instruction_embedding.shape}")
+            if args.use_blip2_encoders:
+                print(f"[CMA POLICY] Using BLIP-2 instruction encoder, output shape: {instruction_embedding.shape}")
 
         if args.ablate_depth:
             depth_embedding = torch.zeros(
@@ -284,8 +284,8 @@ class CMANet(nn.Module):
             )
         else:
             depth_embedding = self.depth_encoder(observations)
-            if args.use_clip_encoders and args.use_clip_depth_encoder:
-                print(f"[CMA POLICY] Using CLIP depth encoder, output shape: {depth_embedding.shape}")
+            if args.use_blip2_encoders and args.use_blip2_depth_encoder:
+                print(f"[CMA POLICY] Using BLIP-2 depth encoder, output shape: {depth_embedding.shape}")
         depth_embedding = torch.flatten(depth_embedding, 2)
 
         if args.ablate_rgb:
@@ -296,8 +296,8 @@ class CMANet(nn.Module):
             )
         else:
             rgb_embedding = self.rgb_encoder(observations)
-            if args.use_clip_encoders:
-                print(f"[CMA POLICY] Using CLIP RGB encoder, output shape: {rgb_embedding.shape}")
+            if args.use_blip2_encoders:
+                print(f"[CMA POLICY] Using BLIP-2 RGB encoder, output shape: {rgb_embedding.shape}")
         rgb_embedding = torch.flatten(rgb_embedding, 2)
 
         rgb_in = self.rgb_linear(rgb_embedding)

@@ -496,18 +496,18 @@ def initialize_trainer():
 def collect_data(data_it=0):
     logger.info(args)
     
-    # 打印CLIP配置信息到命令行
-    if hasattr(args, 'use_clip_encoders') and args.use_clip_encoders:
+    # 打印BLIP-2配置信息到命令行
+    if hasattr(args, 'use_blip2_encoders') and args.use_blip2_encoders:
         print("="*50)
-        print("[CLIP CONFIG] CLIP encoders are ENABLED!")
-        print(f"  - use_clip_encoders: {args.use_clip_encoders}")
-        print(f"  - use_clip_depth_encoder: {getattr(args, 'use_clip_depth_encoder', False)}")
-        print(f"  - clip_model_name: {getattr(args, 'clip_model_name', 'not set')}")
-        print(f"  - freeze_clip_backbone: {getattr(args, 'freeze_clip_backbone', False)}")
+        print("[BLIP-2 CONFIG] BLIP-2 encoders are ENABLED!")
+        print(f"  - use_blip2_encoders: {args.use_blip2_encoders}")
+        print(f"  - use_blip2_depth_encoder: {getattr(args, 'use_blip2_depth_encoder', False)}")
+        print(f"  - blip2_model_name: {getattr(args, 'blip2_model_name', 'not set')}")
+        print(f"  - freeze_blip2_backbone: {getattr(args, 'freeze_blip2_backbone', False)}")
         print("="*50)
     else:
         print("="*50)
-        print("[CLIP CONFIG] CLIP encoders are DISABLED - using ResNet encoders")
+        print("[BLIP-2 CONFIG] BLIP-2 encoders are DISABLED - using ResNet encoders")
         print("="*50)
 
     train_env = initialize_env(split='train')
@@ -756,8 +756,8 @@ def collect_data(data_it=0):
                                 train_env.threading_lock_lmdb_features_txn.acquire()
                                 lmdb_key = str(train_env.trajectory_id_2_episode_ids[infos[i]['trajectory_id']][_i])
                                 
-                                # 打印CLIP特征保存到LMDB的信息
-                                if hasattr(args, 'use_clip_encoders') and args.use_clip_encoders:
+                                # 打印BLIP-2特征保存到LMDB的信息
+                                if hasattr(args, 'use_blip2_encoders') and args.use_blip2_encoders:
                                     obs_keys = list(traj_obs.keys())
                                     feature_keys = [k for k in obs_keys if 'features' in k]
                                     print(f"[LMDB SAVE] Episode {lmdb_key}: Saving features with keys: {feature_keys}")

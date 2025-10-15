@@ -8,7 +8,7 @@ lsof -ti:30000 | xargs -r kill -9
 
 conda activate AirVLN
 
-rm -rf ./DATA/img_features/collect/AirVLN-cma-1000  # 删除指定目录
+rm -rf ./DATA/img_features/collect/AirVLN-cma-blip-1000  # 删除指定目录
 
 cd ./AirVLN
 echo $PWD
@@ -29,11 +29,11 @@ python -u ./src/vlnce_src/train.py \
 --run_type collect \
 --policy_type cma \
 --collect_type TF \
---name AirVLN-cma-1000 \
---use_clip_encoders \
---use_clip_depth_encoder \
---clip_model_name "openai/clip-vit-base-patch32" \
---freeze_clip_backbone \
+--name AirVLN-cma-blip-1000 \
+--use_blip2_encoders \
+--use_blip2_depth_encoder \
+--blip2_model_name "Salesforce/blip2-opt-2.7b" \
+--freeze_blip2_backbone \
 --batchSize "${BATCH_SIZE:-1}"  # batchSize为外部参数BATCH_SIZE，默认值为1，可通过环境变量传入
 
 
