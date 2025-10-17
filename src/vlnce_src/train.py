@@ -1340,6 +1340,103 @@ def _eval_checkpoint(
         pass
 
 
+def test_step_by_step():
+    """测试模式：一步一动，通过命令行交互控制"""
+    logger.info("Starting test mode - step by step control")
+    logger.info(args)
+    
+    # 初始化环境，batch_size=1
+    tok = initialize_tokenizer()
+    test_env = AirVLNENV(batch_size=1, split='one', tokenizer=tok) #选择one.json里面的数据
+    
+    logger.info(f"Environment initialized with {len(test_env.data)} episodes")
+    
+    # 加载第一个episode
+    test_env.next_minibatch()
+    if test_env.batch is None:
+        logger.error("No data available")
+        return
+    
+    # 重置环境
+    outputs = test_env.reset()
+    observations, _, dones, infos = [list(x) for x in zip(*outputs)]
+    
+    logger.info("=" * 80)
+    logger.info(f"Episode ID: {infos[0]['episode_id']}")
+    logger.info(f"Instruction: {test_env.batch[0]['instruction']['instruction_text']}")
+    logger.info("=" * 80)
+    
+    # 打印初始位姿
+    logger.info(f"Initial position: {infos[0].get('position', 'N/A')}")
+    logger.info(f"Initial rotation: {infos[0].get('rotation', 'N/A')}")
+    logger.info(f"RGB shape: {observations[0]['rgb'].shape}")
+    logger.info(f"Depth shape: {observations[0]['depth'].shape}")
+    
+    step = 0
+    max_steps = int(args.maxAction)
+    
+    logger.info("\n" + "=" * 80)
+    logger.info("Interactive control started. Enter action (0-7) or 'q' to quit:")
+    logger.info("Actions: 0=STOP, 1=FORWARD, 2=BACKWARD, 3=LEFT, 4=RIGHT, 5=UP, 6=DOWN, 7=TURN_LEFT, etc.")
+    logger.info("=" * 80 + "\n")
+    
+    while step < max_steps and not dones[0]:
+        # 接收命令行输入
+        try:
+            user_input = input(f"Step {step} > Enter action: ").strip()
+            
+            # 退出命令
+            if user_input.lower() in ['q', 'quit', 'exit']:
+                logger.info("User requested exit")
+                break
+            
+            # 转换为动作
+            action = int(user_input)
+            if action < 0 or action > 7:
+                logger.warning(f"Invalid action {action}, must be 0-7")
+                continue
+                
+        except ValueError:
+            logger.warning("Invalid input, please enter a number 0-7 or 'q' to quit")
+            continue
+        except KeyboardInterrupt:
+            logger.info("\nInterrupted by user")
+            break
+        
+        # 执行动作
+        logger.info(f"\n--- Step {step}: Executing action {action} ---")
+        test_env.makeActions([action])
+        
+        # 获取新的观测
+        outputs = test_env.get_obs()
+        observations, _, dones, infos = [list(x) for x in zip(*outputs)]
+        
+        # 打印位姿信息
+        logger.info(f"Position: {infos[0].get('position', 'N/A')}")
+        logger.info(f"Rotation: {infos[0].get('rotation', 'N/A')}")
+        logger.info(f"Distance to goal: {infos[0].get('distance_to_goal', 'N/A'):.2f}")
+        logger.info(f"Done: {dones[0]}")
+        
+        step += 1
+        
+        if dones[0]:
+            logger.info("\n" + "=" * 80)
+            logger.info("Episode finished!")
+            logger.info(f"Success: {infos[0].get('success', 'N/A')}")
+            logger.info(f"Path length: {infos[0].get('path_length', 'N/A')}")
+            logger.info(f"Steps taken: {step}")
+            logger.info("=" * 80)
+            break
+    
+    # 清理
+    try:
+        test_env.simulator_tool.closeScenes()
+    except:
+        pass
+    
+    logger.info("Test mode ended")
+
+
 if __name__ == "__main__":
     setup()
 
@@ -1349,6 +1446,8 @@ if __name__ == "__main__":
         train_vlnce()
     elif args.run_type == 'eval':
         eval_vlnce()
+    elif args.run_type == 'test':
+        test_step_by_step()
     else:
         raise NotImplementedError
 
