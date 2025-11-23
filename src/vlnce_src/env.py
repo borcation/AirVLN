@@ -92,7 +92,10 @@ class AirVLNENV:
                     continue
 
             new_item = dict(item).copy() #load_data->ori_new_data中的每一条数据是一个字典然后一个一个放进来
-            if args.tokenizer_use_bert: #是否使用 BERT 分词器，奇怪为什么就一处，而且是false
+            if args.use_blip2_encoders:
+                # BLIP-2 使用原始文本，由编码器内部处理
+                instruction_tokens = item['instruction']['instruction_text']
+            elif args.tokenizer_use_bert: #是否使用 BERT 分词器，奇怪为什么就一处，而且是false
                 text = item['instruction']['instruction_text']
                 instruction_tokens = tokenizer(
                     text,

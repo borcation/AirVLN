@@ -74,7 +74,8 @@ class CMANet(nn.Module):
             self.instruction_encoder = BLIP2InstructionEncoder(
                 model_name=args.blip2_model_name,
                 freeze_backbone=args.freeze_blip2_backbone,
-                final_state_only=False  # CMA needs sequence output for attention
+                final_state_only=False,  # CMA needs sequence output for attention
+                device=device
             )
         elif args.tokenizer_use_bert:
             self.instruction_encoder = InstructionBertEncoder()
@@ -273,8 +274,8 @@ class CMANet(nn.Module):
         else:
             # 使用指令编码器处理observations中的instruction
             instruction_embedding = self.instruction_encoder(observations)
-            if args.use_blip2_encoders:
-                print(f"[CMA POLICY] Using BLIP-2 instruction encoder, output shape: {instruction_embedding.shape}")
+            # if args.use_blip2_encoders:
+            #     print(f"[CMA POLICY] Using BLIP-2 instruction encoder, output shape: {instruction_embedding.shape}")
 
         if args.ablate_depth:
             depth_embedding = torch.zeros(
@@ -284,8 +285,8 @@ class CMANet(nn.Module):
             )
         else:
             depth_embedding = self.depth_encoder(observations)
-            if args.use_blip2_encoders and args.use_blip2_depth_encoder:
-                print(f"[CMA POLICY] Using BLIP-2 depth encoder, output shape: {depth_embedding.shape}")
+            # if args.use_blip2_encoders and args.use_blip2_depth_encoder:
+            #     print(f"[CMA POLICY] Using BLIP-2 depth encoder, output shape: {depth_embedding.shape}")
         depth_embedding = torch.flatten(depth_embedding, 2)
 
         if args.ablate_rgb:
@@ -296,8 +297,8 @@ class CMANet(nn.Module):
             )
         else:
             rgb_embedding = self.rgb_encoder(observations)
-            if args.use_blip2_encoders:
-                print(f"[CMA POLICY] Using BLIP-2 RGB encoder, output shape: {rgb_embedding.shape}")
+            # if args.use_blip2_encoders:
+            #     print(f"[CMA POLICY] Using BLIP-2 RGB encoder, output shape: {rgb_embedding.shape}")
         rgb_embedding = torch.flatten(rgb_embedding, 2)
 
         rgb_in = self.rgb_linear(rgb_embedding)

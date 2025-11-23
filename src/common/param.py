@@ -65,6 +65,7 @@ class Param:
 
         self.parser.add_argument("--simulator_tool_port", type=int, default=30000, help="simulator_tool port")
         self.parser.add_argument("--DDP_MASTER_PORT", type=int, default=20000, help="DDP MASTER_PORT")
+        self.parser.add_argument("--DistributedDataParallel", action="store_true", help="Enable DistributedDataParallel")
 
         self.parser.add_argument("--continue_start_from_dagger_it", type=int)
         self.parser.add_argument("--continue_start_from_checkpoint_path", type=str)

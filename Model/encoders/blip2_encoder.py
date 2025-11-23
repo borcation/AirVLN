@@ -186,11 +186,14 @@ class BLIP2VisionEncoder(BaseBLIP2Encoder):
         
         # Projection layer
         self.projection = nn.Linear(self.vision_hidden_size, output_size)
-        self.projection.to(device=self.device, dtype=torch.float16)
+        self.projection.to(device=self.device, dtype=torch.float32)
         
         # Hook for feature extraction
         self.hook_output = None
         self.hook = self._setup_vision_hook()
+        
+        # Identity layer for external hooks (e.g. train.py feature collection)
+        self.layer_extract = nn.Identity()
     
     def _setup_vision_hook(self):
         """Setup hook to extract vision features from last layer."""
@@ -245,26 +248,35 @@ class BLIP2VisionEncoder(BaseBLIP2Encoder):
     
     def forward(self, observations: Dict[str, torch.Tensor]) -> torch.Tensor:
         """Forward pass for RGB images."""
-        rgb_images = observations["rgb"]  # [B, H, W, C]
-        
-        # Preprocess images
-        pixel_values = self._preprocess_rgb_batch(rgb_images)
-        
-        # Extract vision features
-        with torch.set_grad_enabled(not self.freeze_backbone):
-            _ = self.shared.model.vision_model(pixel_values)
-        
-        # Get features from hook
-        vision_features = self.hook_output  # [B, 257, 1408] (256 patches + 1 CLS)
+        # Check for pre-computed features (from LMDB)
+        if "rgb_features" in observations:
+            vision_features = observations["rgb_features"].to(self.device)
+            if vision_features.dim() == 4 and vision_features.shape[1] == 1:
+                vision_features = vision_features.squeeze(1)
+        else:
+            rgb_images = observations["rgb"]  # [B, H, W, C]
+            
+            # Preprocess images
+            pixel_values = self._preprocess_rgb_batch(rgb_images)
+            
+            # Extract vision features
+            with torch.set_grad_enabled(not self.freeze_backbone):
+                _ = self.shared.model.vision_model(pixel_values)
+            
+            # Get features from hook
+            vision_features = self.hook_output  # [B, 257, 1408] (256 patches + 1 CLS)
         
         if vision_features.dim() == 3 and vision_features.shape[1] > self.num_patches:
             # Remove CLS token, keep only patch features
             patch_features = vision_features[:, 1:, :]  # [B, 256, 1408]
         else:
             patch_features = vision_features
+            
+        # Pass through layer_extract for external hooks (train.py)
+        patch_features = self.layer_extract(patch_features)
         
         # Project features
-        projected = self.projection(patch_features)  # [B, 256, output_size]
+        projected = self.projection(patch_features.float())  # [B, 256, output_size]
         
         if self.spatial_output:
             # Reshape to spatial format [B, output_size, H, W]
@@ -307,11 +319,14 @@ class BLIP2DepthEncoder(BaseBLIP2Encoder):
         
         # Projection layer
         self.projection = nn.Linear(self.vision_hidden_size, output_size)
-        self.projection.to(device=self.device, dtype=torch.float16)
+        self.projection.to(device=self.device, dtype=torch.float32)
         
         # Hook for feature extraction
         self.hook_output = None
         self.hook = self._setup_vision_hook()
+        
+        # Identity layer for external hooks
+        self.layer_extract = nn.Identity()
     
     def _setup_vision_hook(self):
         """Setup hook to extract vision features."""
@@ -371,26 +386,35 @@ class BLIP2DepthEncoder(BaseBLIP2Encoder):
     
     def forward(self, observations: Dict[str, torch.Tensor]) -> torch.Tensor:
         """Forward pass for depth images."""
-        depth_images = observations["depth"]  # [B, H, W, 1] or [B, H, W]
-        
-        # Preprocess depth images
-        pixel_values = self._preprocess_depth_batch(depth_images)
-        
-        # Extract vision features
-        with torch.set_grad_enabled(not self.freeze_backbone):
-            _ = self.shared.model.vision_model(pixel_values)
-        
-        # Get features from hook
-        vision_features = self.hook_output  # [B, 257, 1408]
+        # Check for pre-computed features
+        if "depth_features" in observations:
+            vision_features = observations["depth_features"].to(self.device)
+            if vision_features.dim() == 4 and vision_features.shape[1] == 1:
+                vision_features = vision_features.squeeze(1)
+        else:
+            depth_images = observations["depth"]  # [B, H, W, 1] or [B, H, W]
+            
+            # Preprocess depth images
+            pixel_values = self._preprocess_depth_batch(depth_images)
+            
+            # Extract vision features
+            with torch.set_grad_enabled(not self.freeze_backbone):
+                _ = self.shared.model.vision_model(pixel_values)
+            
+            # Get features from hook
+            vision_features = self.hook_output  # [B, 257, 1408]
         
         if vision_features.dim() == 3 and vision_features.shape[1] > self.num_patches:
             # Remove CLS token, keep only patch features
             patch_features = vision_features[:, 1:, :]  # [B, 256, 1408]
         else:
             patch_features = vision_features
+            
+        # Pass through layer_extract for external hooks
+        patch_features = self.layer_extract(patch_features)
         
         # Project features
-        projected = self.projection(patch_features)  # [B, 256, output_size]
+        projected = self.projection(patch_features.float())  # [B, 256, output_size]
         
         if self.spatial_output:
             # Reshape to spatial format [B, output_size, H, W]
@@ -409,29 +433,26 @@ class BLIP2DepthEncoder(BaseBLIP2Encoder):
 class BLIP2InstructionEncoder(BaseBLIP2Encoder):
     """BLIP-2 Instruction Encoder for text instructions (max 512 tokens)."""
     
-    def __init__(self,
+    def __init__(self, 
                  model_name: str = "Salesforce/blip2-opt-2.7b",
                  freeze_backbone: bool = False,
                  output_size: int = 256,
+                 device: torch.device = torch.device("cpu"),
                  final_state_only: bool = True,
-                 max_length: int = 512,
-                 device: torch.device = None):
+                 max_length: int = 512):
         
         super().__init__(model_name, freeze_backbone, output_size, device)
         
         self.final_state_only = final_state_only
         self.max_length = max_length
         
-        # Use language model for text encoding
+        # Text model setup
         self.text_model = self.shared.model.language_model
-        self.text_model.config.output_hidden_states = True
-        
-        # Get text hidden size
         self.text_hidden_size = self.text_model.config.hidden_size
         
         # Projection layer
         self.projection = nn.Linear(self.text_hidden_size, output_size)
-        self.projection.to(device=self.device, dtype=torch.float16)
+        self.projection.to(device=self.device, dtype=torch.float32)
     
     @property
     def output_shape(self):
@@ -457,7 +478,13 @@ class BLIP2InstructionEncoder(BaseBLIP2Encoder):
             
         else:
             # Pre-tokenized instructions
-            instruction_tokens = instructions.to(self.device)
+            # Ensure instructions are on the correct device
+            if isinstance(instructions, torch.Tensor):
+                instruction_tokens = instructions.to(self.device)
+            else:
+                # Fallback for other types (e.g. numpy array)
+                instruction_tokens = torch.as_tensor(instructions).to(self.device)
+                
             batch_size = instruction_tokens.shape[0]
             
             # Ensure proper sequence length
@@ -503,7 +530,7 @@ class BLIP2InstructionEncoder(BaseBLIP2Encoder):
             raise RuntimeError("BLIP-2 text model did not return hidden states")
         
         # Project features
-        projected_sequence = self.projection(sequence_output)  # [B, seq_len, output_size]
+        projected_sequence = self.projection(sequence_output.float())  # [B, seq_len, output_size]
         
         if self.final_state_only:
             # Return final valid token representation

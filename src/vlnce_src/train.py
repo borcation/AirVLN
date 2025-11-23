@@ -60,7 +60,7 @@ class DDPIWTrajectoryDataset(torch.utils.data.IterableDataset):
 
         self.lmdb_features_dir = lmdb_features_dir
         self.lmdb_map_size = lmdb_map_size
-        self.preload_size = batch_size * 100
+        self.preload_size = batch_size * 10
         self._preload = []
         self.batch_size = batch_size
 
@@ -144,7 +144,16 @@ class DDPIWTrajectoryDataset(torch.utils.data.IterableDataset):
         obs, prev_actions, oracle_actions = self._load_next()
 
         for k, v in obs.items():
-            obs[k] = torch.from_numpy(np.copy(v))
+            is_string = False
+            if isinstance(v, np.ndarray) and v.dtype.kind in {'U', 'S'}:
+                is_string = True
+            elif isinstance(v, list) and len(v) > 0 and isinstance(v[0], str):
+                is_string = True
+            
+            if is_string:
+                obs[k] = v
+            else:
+                obs[k] = torch.from_numpy(np.copy(v))
 
         prev_actions = torch.from_numpy(np.copy(prev_actions))
         oracle_actions = torch.from_numpy(np.copy(oracle_actions))
@@ -187,7 +196,7 @@ class IWTrajectoryDataset(torch.utils.data.IterableDataset):
 
         self.lmdb_features_dir = lmdb_features_dir
         self.lmdb_map_size = lmdb_map_size
-        self.preload_size = batch_size * 100
+        self.preload_size = batch_size * 10
         self._preload = []
         self.batch_size = batch_size
 
@@ -267,7 +276,16 @@ class IWTrajectoryDataset(torch.utils.data.IterableDataset):
         obs, prev_actions, oracle_actions = self._load_next()
 
         for k, v in obs.items():
-            obs[k] = torch.from_numpy(np.copy(v))
+            is_string = False
+            if isinstance(v, np.ndarray) and v.dtype.kind in {'U', 'S'}:
+                is_string = True
+            elif isinstance(v, list) and len(v) > 0 and isinstance(v[0], str):
+                is_string = True
+            
+            if is_string:
+                obs[k] = v
+            else:
+                obs[k] = torch.from_numpy(np.copy(v))
 
         prev_actions = torch.from_numpy(np.copy(prev_actions))
         oracle_actions = torch.from_numpy(np.copy(oracle_actions))
@@ -356,6 +374,11 @@ def collate_fn(batch):
     max_traj_len = min(max(ele.size(0) for ele in prev_actions_batch), int(args.maxAction))
     for bid in range(B):
         for sensor in observations_batch:
+            # Skip padding for string inputs (e.g. BLIP-2 instructions)
+            # Only apply tensor padding to tensors
+            if not isinstance(observations_batch[sensor][bid], torch.Tensor):
+                continue
+                
             observations_batch[sensor][bid] = _pad_helper(
                 observations_batch[sensor][bid][:max_traj_len, ...], max_traj_len, fill_val=1.0
             )
@@ -369,6 +392,27 @@ def collate_fn(batch):
         weights_batch[bid] = _pad_helper(weights_batch[bid][:max_traj_len, ...], max_traj_len)
 
     for sensor in observations_batch:
+        # Handle string inputs (numpy arrays of strings)
+        is_string = False
+        if len(observations_batch[sensor]) > 0:
+            first_item = observations_batch[sensor][0]
+            if not isinstance(first_item, torch.Tensor):
+                is_string = True
+
+        if is_string:
+            # Flatten list of strings: [B, T] -> [T*B] (Time-major to match stack(dim=1).view(-1))
+            flat_list = []
+            for t in range(max_traj_len):
+                for bid in range(B):
+                    str_list = observations_batch[sensor][bid]
+                    if t < len(str_list):
+                        flat_list.append(str(str_list[t]))
+                    else:
+                        flat_list.append("") # Pad
+            
+            observations_batch[sensor] = flat_list
+            continue
+
         observations_batch[sensor] = torch.stack(
             observations_batch[sensor], dim=1
         )
@@ -421,12 +465,24 @@ def batch_obs(
 
     for obs in observations:
         for sensor in obs:
-            batch[sensor].append(torch.as_tensor(obs[sensor]))
+            # Handle string inputs (e.g. for BLIP-2 instructions)
+            if isinstance(obs[sensor], str):
+                batch[sensor].append(obs[sensor])
+            else:
+                batch[sensor].append(torch.as_tensor(obs[sensor]))
 
     batch_t: TensorDict = TensorDict()
 
     for sensor in batch:
-        batch_t[sensor] = torch.stack(batch[sensor], dim=0)
+        if len(batch[sensor]) > 0 and isinstance(batch[sensor][0], str):
+            # Keep strings as list
+            batch_t[sensor] = batch[sensor]
+        else:
+            batch_t[sensor] = torch.stack(batch[sensor], dim=0)
+            if device is not None:
+                batch_t[sensor] = batch_t[sensor].to(device)
+    
+    return batch_t
 
     return batch_t.map(lambda v: v.to(device))
 
@@ -538,7 +594,11 @@ def collect_data(data_it=0):
             batch_size = o.shape[0]
             for batch_idx in range(min(batch_size, len(tgt_tensor_list))):
                 if batch_idx < len(tgt_tensor_list):
-                    tgt_tensor_list[batch_idx].set_(o[batch_idx:batch_idx+1].cpu())
+                    # 确保数据类型一致，BLIP-2输出可能是float16
+                    output_tensor = o[batch_idx:batch_idx+1].cpu()
+                    if output_tensor.dtype != torch.float32:
+                        output_tensor = output_tensor.float()
+                    tgt_tensor_list[batch_idx].set_(output_tensor)
         return hook
 
     # 初始化多环境特征容器
@@ -616,6 +676,11 @@ def collect_data(data_it=0):
                 pass
             elif len(rgb_data.shape) == 3 and rgb_data.shape[0] == 3:  # (3, H, W)
                 rgb_data = np.transpose(rgb_data, (1, 2, 0))
+            
+            # AirSim 返回的图像数据通常是 BGR 格式 (OpenCV 默认)
+            # 如果直接用 PIL 保存 (默认 RGB)，会导致颜色错误 (如天空变黄)
+            # 因此需要将 BGR 转换为 RGB
+            rgb_data = rgb_data[..., ::-1]  # BGR -> RGB
             
             filename = f'scene{scene_id}_traj{trajectory_id}_rgb_{step_id:04d}.png'
             filepath = os.path.join(save_dir, filename)
@@ -743,7 +808,12 @@ def collect_data(data_it=0):
                                 )
                                 del traj_obs['teacher_action']
                                 for k, v in traj_obs.items():
-                                    traj_obs[k] = v.numpy() # 转换为numpy格式
+                                    if isinstance(v, list):
+                                        # 对于列表类型（如BLIP-2指令），保持原样或转换为numpy数组（如果内容兼容）
+                                        # 这里我们保持原样，因为msgpack可以处理列表
+                                        pass
+                                    else:
+                                        traj_obs[k] = v.numpy() # 转换为numpy格式
 
                                 # 构建完整的episode数据
                                 transposed_ep = [
@@ -804,7 +874,10 @@ def collect_data(data_it=0):
                             )
                             del traj_obs['teacher_action']
                             for k, v in traj_obs.items():
-                                traj_obs[k] = v.numpy()
+                                if isinstance(v, list):
+                                    pass
+                                else:
+                                    traj_obs[k] = v.numpy()
 
                             transposed_ep = [
                                 traj_obs,
@@ -1171,7 +1244,7 @@ def train_vlnce():
                         device=trainer.device,
                         dtype=torch.float32,
                         non_blocking=True,
-                    )
+                    ) if isinstance(v, torch.Tensor) else v
                     for k, v in observations_batch.items()
                 }
 

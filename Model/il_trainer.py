@@ -43,6 +43,8 @@ class VLNCETrainer:
                 if torch.cuda.is_available()
                 else torch.device("cpu")
             )
+        
+        logger.info(f"Trainer initialized on device: {self.device}")
 
         # 克隆模型配置
         model_config = CN.clone()
